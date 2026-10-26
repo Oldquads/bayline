@@ -1176,7 +1176,11 @@ function useParcel(p){
 
 /* address search */
 const ABBR={ST:"STREET",RD:"ROAD",AVE:"AVENUE",AV:"AVENUE",DR:"DRIVE",CT:"COURT",PL:"PLACE",CRES:"CRESCENT",CR:"CRESCENT",HWY:"HIGHWAY",PDE:"PARADE",LA:"LANE",LN:"LANE",TCE:"TERRACE",GR:"GROVE",CL:"CLOSE",BVD:"BOULEVARD",BLVD:"BOULEVARD",SQ:"SQUARE",CCT:"CIRCUIT",HTS:"HEIGHTS",ESP:"ESPLANADE"};
-function addrPattern(q){return q.toUpperCase().replace(/[,]/g," ").replace(/\bVIC(TORIA)?\b/g," ").split(/\s+/).filter(Boolean).map(t=>ABBR[t]||t).map(t=>t.replace(/'/g,"''")).join("%")}
+function addrPattern(q){
+  const t=q.toUpperCase().replace(/[,]/g," ").replace(/\bVIC(TORIA)?\b/g," ").split(/\s+/).filter(Boolean).map(x=>ABBR[x]||x).map(x=>x.replace(/'/g,"''"));
+  // keep the house number whole: "1 MALCOLM" must not match "1309/35 MALCOLM"
+  return /^\d/.test(t[0]||"")&&t.length>1?t[0]+" "+t.slice(1).join("%"):t.join("%");
+}
 $("#searchForm").addEventListener("submit",async e=>{
   e.preventDefault();const q=$("#address").value.trim();const ul=$("#results");
   if(q.length<4){ul.hidden=false;ul.innerHTML=`<li class="msg">Type a street address, e.g. 133 Whitehall Street Footscray.</li>`;return}
