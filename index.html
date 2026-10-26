@@ -267,6 +267,7 @@ details.paste[open]{display:flex;flex-direction:column;gap:8px}
         <label class="chk"><input type="checkbox" id="blind"> 1.0 m extension past last bay in dead-end aisles</label>
         <label class="chk"><input type="checkbox" id="wall"> 0.3 m extra beside boundary walls</label>
         <label class="chk"><input type="checkbox" id="sweep"> Try rotated grids (every 15°)</label>
+        <label class="chk"><input type="checkbox" id="tablePairs"> Also try wider bays with narrower aisles (Clause 52.06 Table 2)</label>
       </section>
     </aside>
 
@@ -331,7 +332,7 @@ function stdSpecs(key){
 const DEF={
   address:"",shape:"rect",
   dims:{rect:{F:40,D:55},trap:{F:42,D:60,R:30,O:6},splay:{F:45,D:50,C:8},L:{F:48,D:60,NW:20,ND:24}},
-  custom:null,front:0,entry:0.3,entryAuto:true,setF:3,setO:0,
+  custom:null,front:0,entry:0.3,entryAuto:true,tablePairs:true,setF:3,setO:0,
   std:"vic26",specs:stdSpecs("vic26"),spineW:6.4,drvW:6.1,acc:2,blind:true,wall:true,sweep:true
 };
 const KEY="bayline-v1";
@@ -339,6 +340,7 @@ function load(){try{const r=localStorage.getItem(KEY);if(!r)return null;const o=
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 let S=load()||structuredClone(DEF);
 if(S.entryAuto===undefined)S.entryAuto=true;
+if(S.tablePairs===undefined)S.tablePairs=true;
 
 /* ---------- Geometry ---------- */
 const sub=(a,b)=>({x:a.x-b.x,y:a.y-b.y}), add=(a,b)=>({x:a.x+b.x,y:a.y+b.y}), mul=(a,k)=>({x:a.x*k,y:a.y*k});
@@ -449,10 +451,10 @@ function frameCache(ctx,alpha){
    crossover point to the nearest circulation, removes only the bays it
    crosses, places accessible bays and totals the result. One core is tried
    against every crossover point. */
-function layoutCore(fc,t,phase,mode,uEraw){
-  const spec=S.specs[t],ext=S.blind?1.0:0,Ac=S.spineW,clr=S.wall?0.3:0;
+function layoutCore(fc,t,phase,mode,uEraw,specO){
+  const spec=specO||S.specs[t],ext=S.blind?1.0:0,Ac=S.spineW,clr=S.wall?0.3:0;
   const {Q,Qs,bb}=fc;
-  const p90=S.specs.p90.on?S.specs.p90:null;
+  const p90=S.specs.p90.on?(t==="p90"&&specO?specO:S.specs.p90):null;
   let centers;
   const lo=bb.x0+Ac/2,hi=bb.x1-Ac/2;
   if(hi<lo)return null;
@@ -515,7 +517,7 @@ function layoutCore(fc,t,phase,mode,uEraw){
         if(fromHi){const top=h-k*sh.stride;if(top-span<l-1e-6)break;ox=top-sh.maxU}
         else{const st=l+k*sh.stride;if(st+span>h+1e-6)break;ox=st-sh.minU}
         const pts=sh.rel.map(c=>({x:c.x+ox,y:c.y+vE}));
-        if(valid(pts,sh.lat)){bays.push({pts,t,row:rid,i:k,seg:sg});sg.bays++;}
+        if(valid(pts,sh.lat)){bays.push({pts,t,row:rid,i:k,seg:sg,W:spec.W,L:spec.L});sg.bays++;}
       }
     }
   }
@@ -536,14 +538,14 @@ function layoutCore(fc,t,phase,mode,uEraw){
         for(let k=0;;k++){
           const v=vs0+k*p90.W;if(v+p90.W>vs1+1e-6)break;
           const pts=rect(u0,u1,v,v+p90.W);
-          if(valid(pts,{x:0,y:1},[...segF,...bayF])){bays.push({pts,t:"p90",row:rid,i:k,sp});bayF.push({p:pts,b:bbox(pts)})}
+          if(valid(pts,{x:0,y:1},[...segF,...bayF])){bays.push({pts,t:"p90",row:rid,i:k,sp,W:p90.W,L:p90.L});bayF.push({p:pts,b:bbox(pts)})}
         }
       }
     }
   }
   if(!bays.length)return null;
   // the accessway keeps its full length here; attachCrossover trims it
-  return {t,mode,phase,alpha:fc.alpha,spines,keep,bays,ext};
+  return {t,mode,phase,alpha:fc.alpha,spines,keep,bays,ext,spec};
 }
 function attachCrossover(core,fc,ctx){
   const {E,nF,siteF}=fc,{spines,keep,ext}=core;
@@ -595,9 +597,9 @@ function attachCrossover(core,fc,ctx){
   const runLen=hitT+usedSp.reduce((m,sp)=>Math.max(m,sp.v1-sp.v0),0)+aisles.reduce((m,sg)=>Math.max(m,sg.hi-sg.lo),0);
   const W=fc.toW,t=core.t;
   return {
-    t,mode:core.mode,alpha:fc.alpha,phase:core.phase,total,acc:accN,circA,blind,runLen,stubLen:hitT,ctx,
+    t,mode:core.mode,alpha:fc.alpha,phase:core.phase,total,acc:accN,circA,blind,runLen,stubLen:hitT,ctx,spec:core.spec,
     oneWay:t!=="p90",
-    bays:bays.map(b=>({pts:b.pts.map(W),kind:b.kind||"std",t:b.t})),
+    bays:bays.map(b=>({pts:b.pts.map(W),kind:b.kind||"std",t:b.t,W:b.W,L:b.L})),
     aisles:aisles.map(sg=>({pts:rect(sg.lo,sg.hi,sg.v0,sg.v1).map(W),dir:sg.dir,a:W({x:sg.lo,y:(sg.v0+sg.v1)/2}),b:W({x:sg.hi,y:(sg.v0+sg.v1)/2})})),
     spines:usedSp.map(sp=>rect(sp.u0,sp.u1,sp.v0,sp.v1).map(W)),
     stub:stub.map(W)
@@ -610,17 +612,21 @@ let results=[],selKey=null,gen=0,ctxNow=null,userPicked=false;
 function describe(r,ctx){
   const rel=((r.alpha-ctx.frontDir)/D2R%180+180)%180;
   const orient=Math.abs(rel)<1||Math.abs(rel-180)<1?"aisles parallel to street":Math.abs(rel-90)<1?"aisles square to street":`grid rotated ${Math.round(rel)}°`;
-  const angle=TYPES.find(x=>x[0]===r.t)[1];
+  const s0=S.specs[r.t],sp=r.spec||s0,angle=TYPES.find(x=>x[0]===r.t)[1]+(r.spec&&(sp.W!==s0.W||sp.A!==s0.A)?` · ${sp.W.toFixed(1)} m bays, ${sp.A} m aisle`:"");
   const m={entry:"central accessway",left:"accessway at one side",right:"accessway at far side",loop:"one-way loop",spineOnly:"single accessway"}[r.mode]+(r.zoned?` · 2 zones (+${r.zoned.bays} rotated)`:"")+(r.infill?` + ${r.infill.bays} infill`:"");
   return {angle,orient,m};
 }
-function keyOf(r){return `${r.t}|${r.mode}|${Math.round(r.alpha/D2R)}|${r.phase.toFixed(3)}|${r.ctx?r.ctx.entry.toFixed(2):""}`}
+function keyOf(r){return `${r.t}|${r.spec?r.spec.W:""}|${r.mode}|${Math.round(r.alpha/D2R)}|${r.phase.toFixed(3)}|${r.ctx?r.ctx.entry.toFixed(2):""}`}
 
 /* Row grid offsets to try. Besides six evenly spaced offsets, start the
    bank|aisle|bank module exactly on every straight boundary that runs along
    the aisles, so the outer bays sit flush against it and no strip is lost. */
-function rowPhases(fc,t){
-  const spec=S.specs[t],Dp=shapeFor(t,spec,1,1).depth,M=2*Dp+spec.A;
+function tablePairs(){
+  const b=S.specs.p90;if(!S.tablePairs||!b||!b.on)return [];
+  return [[2.6,6.4],[2.8,5.8],[3.0,5.2],[3.2,4.8]].filter(([W,A])=>W>b.W+1e-9&&A<b.A-1e-9).map(([W,A])=>({on:true,W,L:b.L,A}));
+}
+function rowPhases(fc,t,specO){
+  const spec=specO||S.specs[t],Dp=shapeFor(t,spec,1,1).depth,M=2*Dp+spec.A;
   const out=[0,1/6,2/6,3/6,4/6,5/6];
   const Q=fc.Q,y0=fc.bb.y0;
   for(let i=0;i<Q.length;i++){
@@ -683,17 +689,28 @@ function recompute(){
     }
     if(i<jobs.length){$("#status").textContent=`testing ${i} / ${jobs.length}…`;setTimeout(step,0);return}
     window.__blDone=false;
-    finish(found,jobs.length,ctx);
-    // second stage: zoned layouts for lots with an inside corner
-    if(!polySplits(ctx.usable).length){window.__blDone=true;return}
-    $("#status").textContent+=" · trying zoned layouts…";
-    setTimeout(()=>{
+    let all=found,tested=jobs.length;
+    finish(all,tested,ctx);
+    // later stages run after the first results are on screen
+    const stages=[];
+    const pairs=tablePairs();
+    if(pairs.length)stages.push(["trying wider bays with narrower aisles",()=>{
+      const tops=[...new Set(all.filter(r=>r.t==="p90").slice(0,8).map(r=>r.alpha))];
+      const alphas=[...new Set([...tops,...regionAlphas(ctx.usable,ctx.frontDir)])];
+      let ex=[];for(const sp of pairs)ex=ex.concat(searchSync(ctxs,alphas,["p90"],sp));return ex}]);
+    if(polySplits(ctx.usable).length)stages.push(["trying zoned layouts",()=>zoneSearch(ctxs,types)]);
+    const runStage=k=>{
       if(my!==gen)return;
-      let extra=[];try{extra=zoneSearch(ctxs,types)}catch(e){console.error(e)}
-      if(my!==gen)return;
-      finish(found.concat(extra),jobs.length+extra.length,ctx);
-      window.__blDone=true;
-    },30);
+      if(k>=stages.length){window.__blDone=true;return}
+      $("#status").textContent=`${tested} tested · ${stages[k][0]}…`;
+      setTimeout(()=>{
+        if(my!==gen)return;
+        let extra=[];try{extra=stages[k][1]()}catch(e){console.error(e)}
+        if(my!==gen)return;
+        all=all.concat(extra);tested+=extra.length;finish(all,tested,ctx);runStage(k+1);
+      },30);
+    };
+    runStage(0);
   };
   if(!jobs.length){finish([],0,ctx);window.__blDone=true;return}
   step();
@@ -739,17 +756,17 @@ function regionAlphas(P,base){
   return [...set].map(d=>d*D2R);
 }
 // synchronous search over a set of crossover contexts
-function searchSync(ctxList,alphas,types){
+function searchSync(ctxList,alphas,types,specO){
   const found=[];
   for(const a of alphas){
     const fcs=ctxList.map(c=>frameCache(c,a));
     for(const t of types){
       const modes=t==="p90"?["entry","left","right","loop","spineOnly"]:["loop"];
-      for(const ph of rowPhases(fcs[0],t))for(const m of modes){
+      for(const ph of rowPhases(fcs[0],t,specO))for(const m of modes){
         if(m==="spineOnly"&&ph!==0)continue;
         try{
-          if(m==="entry"||m==="spineOnly"){for(let k=0;k<fcs.length;k++){const core=layoutCore(fcs[k],t,ph,m,fcs[k].E.x);if(core){const r=attachCrossover(core,fcs[k],ctxList[k]);if(r)found.push(r)}}}
-          else{const core=layoutCore(fcs[0],t,ph,m,0);if(core){let best=null;for(let k=0;k<fcs.length;k++){const r=attachCrossover(core,fcs[k],ctxList[k]);if(r&&(!best||r.total>best.total))best=r}if(best)found.push(best)}}
+          if(m==="entry"||m==="spineOnly"){for(let k=0;k<fcs.length;k++){const core=layoutCore(fcs[k],t,ph,m,fcs[k].E.x,specO);if(core){const r=attachCrossover(core,fcs[k],ctxList[k]);if(r)found.push(r)}}}
+          else{const core=layoutCore(fcs[0],t,ph,m,0,specO);if(core){let best=null;for(let k=0;k<fcs.length;k++){const r=attachCrossover(core,fcs[k],ctxList[k]);if(r&&(!best||r.total>best.total))best=r}if(best)found.push(best)}}
         }catch(e){}
       }
     }
@@ -1059,7 +1076,7 @@ function asClass(t,s){
 function checks(r){
   const out=[],types=[...new Set(r.bays.map(b=>b.t))];
   for(const t of types){
-    const s=S.specs[t],nm=TYPES.find(x=>x[0]===t)[1];
+    const s=(t===r.t&&r.spec)?r.spec:S.specs[t],nm=TYPES.find(x=>x[0]===t)[1];
     out.push(vicOK(t,s)?["ok",`${nm} bays ${s.W} × ${s.L} m, aisle ${s.A} m meet Clause 52.06-9 Table 2.`]:["bad",`${nm} bays ${s.W} × ${s.L} m, aisle ${s.A} m fall short of Clause 52.06-9 Table 2.`]);
     const a=asClass(t,s);
     out.push(a?["ok",t==="p90"?`Meets AS/NZS 2890.1 user class ${a.join(", ")} (90°).`:`Meets AS/NZS 2890.1 ${a[0]} values for ${nm} (one-way aisle). Confirm against Figure 2.2.`]:["warn",`${nm} dimensions are below AS/NZS 2890.1 for any user class. Fine if the council accepts Clause 52.06 sizes.`]);
@@ -1108,8 +1125,9 @@ function renderSelected(){
   const d=describe(r,ctx);
   const ck=checks(r);
   sm.innerHTML=`
-    <div><div class="cap">Car bays</div><div class="big"><b>${r.total}</b><span>${d.angle}</span></div></div>
+    <div><div class="cap">Car bays</div><div class="big"><b>${r.total}</b><span>${TYPES.find(x=>x[0]===r.t)[1]}</span></div></div>
     <dl class="kv">
+      <dt>Bay × length / aisle</dt><dd>${(r.spec||S.specs[r.t]).W.toFixed(1)} × ${(r.spec||S.specs[r.t]).L} m / ${(r.spec||S.specs[r.t]).A} m</dd>
       <dt>Accessible</dt><dd>${r.acc}</dd>
       <dt>Site per bay</dt><dd>${(ctx.siteArea/r.total).toFixed(1)} m²</dd>
       <dt>Aisles &amp; accessway</dt><dd>${Math.round(r.circA)} m²</dd>
@@ -1174,7 +1192,7 @@ function bind(){
   const num=(id,key,min)=>{const el=$(id);el.value=S[key];el.addEventListener("input",()=>{const v=parseFloat(el.value);if(isFinite(v)&&v>=min){S[key]=v;schedule()}})};
   num("#setF","setF",0);num("#setO","setO",0);num("#spineW","spineW",3);num("#drvW","drvW",3);num("#acc","acc",0);
   const tog=(id,key)=>{const el=$(id);el.checked=S[key];el.addEventListener("change",()=>{S[key]=el.checked;schedule()})};
-  tog("#blind","blind");tog("#wall","wall");tog("#sweep","sweep");
+  tog("#blind","blind");tog("#wall","wall");tog("#sweep","sweep");tog("#tablePairs","tablePairs");
   $("#editBtn").addEventListener("click",()=>{editing=!editing;$("#editBtn").classList.toggle("on",editing);$("#editBtn").setAttribute("aria-pressed",editing);$("#plan").classList.toggle("editing",editing);renderSelected()});
   $("#svgBtn").addEventListener("click",()=>doSave("svg"));
   $("#csvBtn").addEventListener("click",()=>doSave("csv"));

@@ -8,3 +8,5 @@ Results on 26 Oct 2026 (before the review -> after):
 - total bays 3,042 -> 3,091; Box Hill 2305\PP3337 (L-shaped) 265 -> 317
 - layouts with unreachable bays or bays outside the lot: present in 5 lots -> 1 bay on 1 lot (removed by the checker)
 - search time for all 20 lots: 38.5 s -> 22.8 s before zoned layouts (zoned stage adds up to ~3 s on lots with an inside corner, after the first results show)
+
+Clause 52.06 Table 2 pairs in the main grid (26 Oct 2026, second change): total 3,091 -> 3,120 bays. 272-282 Queen St 37 -> 40, Port Melbourne 9\PS537520 48 -> 56, Port Melbourne 11\PS523474 221 -> 239. The extra stage adds 0.3-2.5 s after the first results show.
