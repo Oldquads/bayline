@@ -977,7 +977,8 @@ const toLL=(x,y)=>[LON0+x/KX,LAT0+y/KY];
 const LOTZ=15.4,T2={lon:0.006,lat:0.005};
 const M={parcels:new Map(),roads:new Map(),tiles:new Map(),addr:new Map(),sel:null,map:null,ready:false,hover:null,marker:null};
 async function wfs(url,signal){const r=await fetch(url,{signal});if(!r.ok)throw {code:"http",message:"Vicmap answered "+r.status};return r.json()}
-const lotURL=(ix,iy)=>`${WFS}?service=WFS&version=1.1.0&request=GetFeature&typeName=open-data-platform:v_parcel_mp,open-data-platform:tr_road&propertyName=(parcel_spi,parcel_road,geom)(road_name,road_type,class_code,geom)&outputFormat=application/json&srsName=EPSG:4326&maxFeatures=8000&bbox=${[ix*T2.lon,iy*T2.lat,(ix+1)*T2.lon,(iy+1)*T2.lat].map(v=>v.toFixed(6)).join(",")},EPSG:4326`;
+const boxURL=b=>`${WFS}?service=WFS&version=1.1.0&request=GetFeature&typeName=open-data-platform:v_parcel_mp,open-data-platform:tr_road&propertyName=(parcel_spi,parcel_road,geom)(road_name,road_type,class_code,geom)&outputFormat=application/json&srsName=EPSG:4326&maxFeatures=5000&bbox=${b.map(v=>v.toFixed(6)).join(",")},EPSG:4326`;
+const VICMAP_CAP=5000;
 function ingest(fc){
   for(const f of fc.features||[]){
     const g=f.geometry;if(!g)continue;
@@ -1017,9 +1018,26 @@ function loadTiles(){
   const keep=new Set(want.map(([x,y])=>x+","+y));
   for(let i=queue.length-1;i>=0;i--)if(!keep.has(queue[i].k)){M.tiles.delete(queue[i].k);queue.splice(i,1)}
   for(const [ix,iy] of want){const k=ix+","+iy;if(M.tiles.has(k))continue;M.tiles.set(k,"loading");
-    const job=()=>wfs(lotURL(ix,iy)).then(fc=>{M.tiles.set(k,"ok");ingest(fc);pushLots();afterLoad()}).catch(()=>{M.tiles.delete(k);setStat("Vicmap didn't answer for part of the map. Move the map to retry.")});
+    const box=[ix*T2.lon,iy*T2.lat,(ix+1)*T2.lon,(iy+1)*T2.lat];
+    const job=()=>loadBox(box,0,0).then(()=>{M.tiles.set(k,"ok")}).catch(()=>{M.tiles.delete(k);setStat("Vicmap didn't answer for part of the map. Move the map to retry.")});
     job.k=k;queue.push(job)}
   pump();stat();
+}
+/* Vicmap returns at most 5,000 features per request. Dense blocks (strata
+   apartments, where every unit is its own lot) exceed that, so a full answer
+   is split into quarters until every piece comes back complete. */
+async function loadBox(b,depth,attempt){
+  let fc;
+  try{fc=await wfs(boxURL(b))}
+  catch(e){if(attempt<2){await new Promise(r=>setTimeout(r,600*(attempt+1)));return loadBox(b,depth,attempt+1)}throw e}
+  const n=(fc.features||[]).length;
+  if(n>=VICMAP_CAP&&depth<4){
+    const mx=(b[0]+b[2])/2,my=(b[1]+b[3])/2;
+    const parts=[[b[0],b[1],mx,my],[mx,b[1],b[2],my],[b[0],my,mx,b[3]],[mx,my,b[2],b[3]]];
+    await Promise.all(parts.map(q=>loadBox(q,depth+1,0)));
+    return;
+  }
+  ingest(fc);pushLots();afterLoad();
 }
 let pendingPick=null,pendingAddr=null;
 function afterLoad(){if(pendingPick){const p=parcelAt(pendingPick);if(p){selectParcel(p,pendingAddr);pendingPick=null}}}
