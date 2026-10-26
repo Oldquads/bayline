@@ -599,7 +599,7 @@ function describe(r,ctx){
   const rel=((r.alpha-ctx.frontDir)/D2R%180+180)%180;
   const orient=Math.abs(rel)<1||Math.abs(rel-180)<1?"aisles parallel to street":Math.abs(rel-90)<1?"aisles square to street":`grid rotated ${Math.round(rel)}°`;
   const angle=TYPES.find(x=>x[0]===r.t)[1];
-  const m={entry:"central accessway",left:"accessway at one side",right:"accessway at far side",loop:"one-way loop",spineOnly:"single accessway"}[r.mode];
+  const m={entry:"central accessway",left:"accessway at one side",right:"accessway at far side",loop:"one-way loop",spineOnly:"single accessway"}[r.mode]+(r.infill?` + ${r.infill.bays} infill`:"");
   return {angle,orient,m};
 }
 function keyOf(r){return `${r.t}|${r.mode}|${Math.round(r.alpha/D2R)}|${r.phase.toFixed(2)}`}
@@ -661,7 +661,90 @@ function recompute(){
   if(!jobs.length){finish([],0,ctx);return}
   step();
 }
+/* ---------- Local infill ----------
+   After the main grid is laid out, leftover space next to the circulation is
+   filled with small layouts oriented to their own spot:
+   1. carry an aisle on past where it stops, narrowing it to a Clause 52.06
+      Table 2 width where it must and widening its bays to match;
+   2. branch a new dead-end aisle off a bare aisle or accessway side, square
+      to that side, with bays on both sides;
+   3. line any bare aisle edge with 90 degree (or parallel) bays.
+   Each round takes the move that adds the most bays, up to six rounds. */
+function infillCombos(){
+  const s=S.specs.p90;if(!s||!s.on)return [];
+  const out=[{W:s.W,L:s.L,A:s.A}];
+  for(const [W,A] of [[2.6,6.4],[2.8,5.8],[3.0,5.2],[3.2,4.8]])if(W>=s.W-1e-9&&A<=s.A+1e-9&&!out.some(c=>Math.abs(c.W-W)<1e-6&&Math.abs(c.A-A)<1e-6))out.push({W,L:s.L,A});
+  return out.sort((a,b)=>a.W-b.W);
+}
+const unit=v=>{const l=Math.hypot(v.x,v.y)||1;return {x:v.x/l,y:v.y/l}};
+function infill(r,ctx){
+  const combos=infillCombos();if(!combos.length)return r;
+  const Q=ctx.usable,ext=S.blind?1.0:0;
+  const occ=[...r.bays.map(b=>b.pts),...r.aisles.map(a=>a.pts),...r.spines,r.stub].map(p=>({p,b:bbox(p)}));
+  const E0=ctx.E,throat=8; // keep the entry queuing area clear
+  const free=pts=>{if(!inside(pts,Q))return false;if(pts.some(q=>Math.hypot(q.x-E0.x,q.y-E0.y)<throat))return false;const b=bbox(pts);for(const o of occ)if(bbHit(b,o.b)&&sat(pts,o.p))return false;return true};
+  const quad=(o,t,n,s0,s1,d0,d1)=>[add(o,add(mul(t,s0),mul(n,d0))),add(o,add(mul(t,s1),mul(n,d0))),add(o,add(mul(t,s1),mul(n,d1))),add(o,add(mul(t,s0),mul(n,d1)))];
+  // greedy bank of bays along a line: origin o, direction t over [0,len], bays grow towards n
+  const bank=(o,t,n,len,W,L,extra)=>{const out=[];let s=0;while(s+W<=len+1e-6){const p=quad(o,t,n,s,s+W,0,L);const ok=free(p)&&!(extra&&extra.some(q=>bbHit(bbox(p),bbox(q))&&sat(p,q)));if(ok){out.push(p);s+=W}else s+=0.2}return out};
+  // circulation rectangles we can grow from: [c0,c1,c2,c3]
+  const circ=()=>[...r.aisles.map(a=>a.pts),...r.spines];
+  const edgesOf=pts=>{const c=centroid(pts);return pts.map((a,i)=>{const b=pts[(i+1)%4],t=unit(sub(b,a)),m=mul(add(a,b),0.5);let n={x:-t.y,y:t.x};if((m.x-c.x)*n.x+(m.y-c.y)*n.y<0)n=mul(n,-1);return {a,b,t,n,len:len(sub(b,a))}})};
+  const reach=(o,t,n,w,maxL)=>{let s=0;while(s+0.5<=maxL&&free(quad(o,t,n,0,w,s,s+0.5).map(p=>p)))s+=0.5;return s};
+  const added={bays:0,aisles:0,narrow:new Set(),par:0};
+  for(let round=0;round<6;round++){
+    let best=null;
+    const consider=c=>{if(c.bays.length&&(!best||c.bays.length>best.bays.length))best=c};
+    for(const pts of circ()){
+      const E=edgesOf(pts);const width=Math.min(E[0].len,E[1].len);
+      for(const e of E){
+        const isEnd=e.len<=width+1e-6;
+        if(isEnd){
+          // 1. carry the aisle on, flush to either side, at each Table 2 width that fits
+          for(const c of combos){if(c.A>e.len+1e-6)continue;
+            for(const flip of [0,1]){
+              const o=flip?add(e.b,mul(e.t,-c.A)):e.a; // new aisle spans [o, o+t*A] across, grows along n
+              const run=reach(o,e.t,e.n,c.A,120);if(run<c.L*0+5)continue;
+              const aisle=quad(o,e.t,e.n,0,c.A,0.05,run);
+              const use=run-ext;if(use<c.W)continue;
+              // banks either side of the new aisle, bays facing it
+              const left=bank(o,e.n,mul(e.t,-1),use,c.W,c.L,[aisle]);
+              const right=bank(add(o,mul(e.t,c.A)),e.n,e.t,use,c.W,c.L,[aisle,...left]);
+              consider({aisle,bays:[...left,...right],W:c.W,L:c.L,A:c.A,kind:"carry"});
+            }}
+        }else{
+          // 3. bare side: line it with bays (90 degree at the aisle's own width, or parallel)
+          const aw=width;
+          for(const c of combos){if(c.A>aw+1e-6)continue;consider({bays:bank(e.a,e.t,e.n,e.len,c.W,c.L),W:c.W,L:c.L,A:c.A,kind:"side"});break}
+          if(S.specs.par&&S.specs.par.on&&aw>=S.specs.par.A-1e-6){const p=S.specs.par;consider({bays:bank(e.a,e.t,e.n,e.len,p.L,p.W),W:p.W,L:p.L,A:p.A,kind:"par"})}
+          // 2. branch a dead-end aisle square to this side
+          const c0=combos.find(c=>Math.abs(c.A-S.specs.p90.A)<1e-6)||combos[0];
+          for(let s=0;s+c0.A<=e.len+1e-6;s+=1.0){
+            const o=add(e.a,mul(e.t,s));
+            if(!free(quad(o,e.t,e.n,0,c0.A,0.05,0.55)))continue;
+            const run=reach(o,e.t,e.n,c0.A,120);const use=run-ext;if(use<c0.W*2)continue;
+            const aisle=quad(o,e.t,e.n,0,c0.A,0.05,run);
+            const left=bank(o,e.n,mul(e.t,-1),use,c0.W,c0.L,[aisle]);
+            const right=bank(add(o,mul(e.t,c0.A)),e.n,e.t,use,c0.W,c0.L,[aisle,...left]);
+            if(left.length+right.length>=3)consider({aisle,bays:[...left,...right],W:c0.W,L:c0.L,A:c0.A,kind:"branch"});
+          }
+        }
+      }
+    }
+    if(!best||best.bays.length<1)break;
+    // commit
+    if(best.aisle){const c=centroid(best.aisle);r.aisles.push({pts:best.aisle,dir:0,a:c,b:c,infill:true});occ.push({p:best.aisle,b:bbox(best.aisle)});added.aisles++;r.circA+=Math.abs(area(best.aisle))}
+    for(const p of best.bays){r.bays.push({pts:p,kind:"std",t:best.kind==="par"?"par":"p90",W:best.W,L:best.L,infill:true});occ.push({p,b:bbox(p)})}
+    added.bays+=best.bays.length;if(best.kind==="par")added.par+=best.bays.length;
+    if(Math.abs(best.A-S.specs.p90.A)>1e-6&&best.kind!=="par")added.narrow.add(`${best.W.toFixed(1)} × ${best.L} m bays on a ${best.A} m aisle`);
+  }
+  if(added.bays){r.total+=added.bays;r.infill={bays:added.bays,aisles:added.aisles,narrow:[...added.narrow],par:added.par}}
+  return r;
+}
+
 function finish(found,n,ctx){
+  found.sort((a,b)=>b.total-a.total||b.acc-a.acc||a.circA-b.circA);
+  // fill leftover space on the strongest candidates, then rank again
+  {const t0=performance.now();for(const r of found.slice(0,18)){try{infill(r,ctx)}catch(e){}}window.__infillMs=Math.round(performance.now()-t0);}
   found.sort((a,b)=>b.total-a.total||b.acc-a.acc||a.circA-b.circA);
   const seen=new Set(),out=[];
   for(const r of found){
@@ -783,6 +866,10 @@ function checks(r){
   if(r.blind)out.push(S.blind?["info",`${r.blind} dead-end aisle${r.blind>1?"s":""}: the 1.0 m extension is applied. Check cars can turn and leave forwards (required when an accessway serves 4+ bays).`]:["warn",`${r.blind} dead-end aisle${r.blind>1?"s":""} with no extension past the last bay. AS/NZS 2890.1 asks for 1.0 m.`]);
   if(S.acc>0)out.push(r.acc>=S.acc?["ok",`${r.acc} accessible bay${r.acc>1?"s":""} with shared zone, placed nearest the crossover (AS/NZS 2890.6).`]:["warn",`Only ${r.acc} of ${S.acc} accessible bays fit beside a 90° bay pair.`]);
   if(S.acc>0&&S.specs.p90.W<2.4)out.push(["warn","Accessible bays need 2.4 m width plus a 2.4 m shared zone. Your 90° width is smaller."]);
+  if(r.infill){
+    out.push(["info",`Infill: ${r.infill.bays} bays added in leftover space${r.infill.aisles?` on ${r.infill.aisles} locally oriented aisle${r.infill.aisles>1?"s":""}`:""}.`]);
+    for(const n of r.infill.narrow)out.push(["ok",`Infill uses ${n}, an allowed pairing in Clause 52.06-9 Table 2.`]);
+  }
   out.push(["info","Use a 4 m internal radius at accessway bends, or widen beyond 4.2 m."]);
   return out;
 }
@@ -918,7 +1005,7 @@ function buildSVG(r,ctx){
 function esc(t){return String(t).replace(/[<>&-]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;","-":"–"}[c]))}
 function buildCSV(r,ctx){
   const rows=[["bay","type","kind","centre_x_m","centre_y_m","width_m","length_m"]];let n=0;
-  for(const b of r.bays){if(b.kind==="shared")continue;n++;const c=centroid(b.pts),s=S.specs[b.t];rows.push([n,TYPES.find(x=>x[0]===b.t)[1],b.kind==="acc"?"accessible":"standard",c.x.toFixed(2),c.y.toFixed(2),s.W,s.L])}
+  for(const b of r.bays){if(b.kind==="shared")continue;n++;const c=centroid(b.pts),s=S.specs[b.t];rows.push([n,TYPES.find(x=>x[0]===b.t)[1],b.kind==="acc"?"accessible":"standard",c.x.toFixed(2),c.y.toFixed(2),b.W||s.W,b.L||s.L])}
   return [`# ${S.address||"Example site"}`,`# site area ${ctx.siteArea.toFixed(1)} m2, ${r.total} bays`,...rows.map(r=>r.join(","))].join("\n");
 }
 async function doSave(kind){
