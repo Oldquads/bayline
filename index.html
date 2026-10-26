@@ -1,0 +1,1193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Car park test fits for Victorian sites: pick a Vicmap lot on an OpenStreetMap base map and compare parking layouts checked against Clause 52.06 and AS/NZS 2890.1.">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>body{margin:0;font:14px/1.45 system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+<title>Bayline Car Park Planner</title>
+<style>
+/* Layout: drafting-table split — controls rail on the left, plan sheet + option strip on the right; stacks on phones. */
+:root{
+  --bg:#E9ECE8; --surface:#F7F8F5; --sunk:#DFE3DE; --ink:#1E292D; --muted:#5A676B; --rule:#C6CDC8;
+  --site:#2C6A88; --aisle:#D5DBD5; --paint:#1E292D; --accent:#E2B007; --accent-ink:#7C5E00;
+  --access:#2B63C9; --ok:#2E7D4F; --warn:#B26A00; --bad:#B3362C;
+  --map-sea:#CDD5D8; --map-land:#F3F3F0; --map-built:#ECECE8; --map-park:#E1E8DC; --map-road:#FFFFFF; --map-case:#D9DAD5; --map-label:#6B7175; --map-lot:#C9CBC5; --map-major:#F7E7B4;
+  --f-display:"Barlow Condensed","Arial Narrow",sans-serif;
+  --f-body:"Barlow","Helvetica Neue",Arial,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171A1C; --surface:#202427; --sunk:#2A2F33; --ink:#E7E9E4; --muted:#9AA4A7; --rule:#394045;
+  --site:#6DB2D3; --aisle:#2D3337; --paint:#EDEEE9; --accent:#F2C230; --accent-ink:#F2C230;
+  --access:#5B8EEA; --ok:#5DBB84; --warn:#E3A03A; --bad:#E5675C; --map-sea:#1B2328; --map-land:#262A2D; --map-built:#2B3033; --map-park:#263129; --map-road:#3A4045; --map-case:#1F2326; --map-label:#9AA3A7; --map-lot:#3E4448; --map-major:#4A4536; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171A1C; --surface:#202427; --sunk:#2A2F33; --ink:#E7E9E4; --muted:#9AA4A7; --rule:#394045;
+  --site:#6DB2D3; --aisle:#2D3337; --paint:#EDEEE9; --accent:#F2C230; --accent-ink:#F2C230;
+  --access:#5B8EEA; --ok:#5DBB84; --warn:#E3A03A; --bad:#E5675C; --map-sea:#1B2328; --map-land:#262A2D; --map-built:#2B3033; --map-park:#263129; --map-road:#3A4045; --map-case:#1F2326; --map-label:#9AA3A7; --map-lot:#3E4448; --map-major:#4A4536; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45}
+.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 32px;max-width:1440px;margin:0 auto}
+header.top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;padding-bottom:14px;border-bottom:2px solid var(--ink);margin-bottom:16px}
+.brand{display:flex;flex-direction:column;gap:2px}
+.brand h1{font-family:var(--f-display);font-weight:700;font-size:30px;letter-spacing:.01em;margin:0;line-height:1;text-wrap:balance}
+.brand h1 .stripe{display:inline-block;width:22px;height:22px;margin-right:8px;vertical-align:-2px;background:repeating-linear-gradient(135deg,var(--accent) 0 5px,transparent 5px 10px);border:2px solid var(--ink)}
+.brand p{margin:0;color:var(--muted);font-size:13px}
+.addr{display:flex;flex-direction:column;gap:4px;flex:1 1 320px;max-width:560px}
+.addr input{font:500 16px var(--f-body);padding:9px 12px;border:1.5px solid var(--ink);background:var(--surface);color:var(--ink);border-radius:2px;width:100%}
+.addr small{color:var(--muted);font-size:12px}
+label.cap,.cap{font:600 11px var(--f-body);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.grid{display:grid;grid-template-columns:minmax(280px,350px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+aside{display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:3px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.panel h2{font-family:var(--f-display);font-weight:600;font-size:17px;letter-spacing:.02em;margin:0;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.panel h2 span{font:500 11px var(--f-mono);color:var(--muted);letter-spacing:0}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{flex:1 1 90px;min-width:0}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld input,.fld select,select,textarea{font:400 14px var(--f-body);padding:6px 8px;border:1px solid var(--rule);background:var(--bg);color:var(--ink);border-radius:2px;width:100%;min-width:0}
+input[type=number],textarea{font-family:var(--f-mono);font-size:13px;font-variant-numeric:tabular-nums}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+textarea{resize:vertical;min-height:96px}
+table.specs{width:100%;border-collapse:collapse;font-size:13px}
+table.specs th{font:600 10.5px var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;padding:2px 3px 5px}
+table.specs td{padding:3px}
+table.specs td:first-child{white-space:nowrap}
+table.specs input[type=number]{width:100%;padding:5px 4px;border:1px solid var(--rule);background:var(--bg);color:var(--ink);border-radius:2px}
+table.specs .ang{font:600 13px var(--f-mono)}
+.chk{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
+.chk input{accent-color:var(--ink);width:15px;height:15px}
+.hint{font-size:12px;color:var(--muted);margin:0}
+.btn{font:600 13px var(--f-body);padding:7px 12px;border:1.5px solid var(--ink);background:var(--surface);color:var(--ink);border-radius:2px;cursor:pointer}
+.btn:hover{background:var(--sunk)}
+.btn.on{background:var(--ink);color:var(--surface)}
+.btn[disabled]{opacity:.5;cursor:default}
+main{display:flex;flex-direction:column;gap:16px;min-width:0}
+.sheet{background:var(--surface);border:1px solid var(--rule);border-radius:3px;display:grid;grid-template-columns:minmax(0,1fr) 280px;min-width:0}
+@media (max-width:1180px){.sheet{grid-template-columns:minmax(0,1fr)}}
+.planbox{position:relative;min-width:0;border-right:1px solid var(--rule)}
+@media (max-width:1180px){.planbox{border-right:0;border-bottom:1px solid var(--rule)}}
+.planbar{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--rule)}
+.planbar .t{font-family:var(--f-display);font-weight:600;font-size:16px;min-width:0;overflow-wrap:anywhere}
+.planbar .tools{display:flex;gap:6px;flex-wrap:wrap}
+#plan{display:block;width:100%;height:clamp(340px,62vh,700px);touch-action:none}
+#plan.editing{cursor:crosshair}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;padding:8px 12px;border-top:1px solid var(--rule);font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:10px;margin-right:5px;vertical-align:-1px;border:1px solid var(--paint)}
+.summary{padding:14px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.big{display:flex;align-items:baseline;gap:10px}
+.big b{font:700 56px/0.9 var(--f-display);font-variant-numeric:tabular-nums}
+.big span{font:600 14px var(--f-body);color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+dl.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:13px}
+dl.kv dt{color:var(--muted)}
+dl.kv dd{margin:0;text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+ul.checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+ul.checks li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;font-size:12.5px;line-height:1.4;align-items:start}
+.pill{font:600 10px var(--f-mono);letter-spacing:.04em;padding:2px 6px;border-radius:2px;border:1px solid currentColor;text-transform:uppercase;margin-top:1px}
+.pill.ok{color:var(--ok)}.pill.warn{color:var(--warn)}.pill.bad{color:var(--bad)}.pill.info{color:var(--muted)}
+.opts h2{font-family:var(--f-display);font-weight:600;font-size:20px;margin:0 0 8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.opts h2 span{font:500 12px var(--f-mono);color:var(--muted)}
+.optgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.opt{background:var(--surface);border:1px solid var(--rule);border-radius:3px;padding:0;cursor:pointer;text-align:left;color:var(--ink);font:inherit;display:flex;flex-direction:column;min-width:0}
+.opt:hover{border-color:var(--muted)}
+.opt.sel{border:2px solid var(--ink);box-shadow:inset 0 -4px 0 var(--accent)}
+.opt canvas{width:100%;height:120px;display:block}
+.opt .meta{padding:7px 9px 9px;display:flex;flex-direction:column;gap:1px;border-top:1px solid var(--rule)}
+.opt .meta b{font:700 22px/1 var(--f-display);font-variant-numeric:tabular-nums}
+.opt .meta b small{font:600 11px var(--f-body);color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-left:4px}
+.opt .meta span{font-size:12px;color:var(--muted)}
+.opt .rank{font:500 11px var(--f-mono);color:var(--muted)}
+.empty{padding:28px;border:1.5px dashed var(--rule);border-radius:3px;color:var(--muted);text-align:center}
+.status{font:500 12px var(--f-mono);color:var(--muted)}
+.hdr-src{margin:0;font-size:12px;color:var(--muted);max-width:420px}
+.finder{position:relative;border:1px solid var(--rule);border-radius:3px;margin-bottom:20px;min-width:0;overflow:hidden;background:#E8E9E6}
+.mapbox{position:relative;min-width:0}
+#map{display:block;width:100%;height:clamp(480px,76vh,800px);background:#E8E9E6}
+.float{position:absolute;top:16px;left:16px;bottom:16px;width:340px;overflow:auto;background:var(--surface);border:1px solid var(--rule);border-radius:3px;box-shadow:0 10px 30px rgba(20,30,35,.14);padding:20px 20px 18px;display:flex;flex-direction:column;gap:14px}
+.float .eyebrow{font:500 10.5px var(--f-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.float h2{font-family:var(--f-display);font-weight:700;font-size:34px;line-height:.95;margin:-6px 0 0;letter-spacing:.005em;text-wrap:balance}
+.float h2::after{content:"";display:inline-block;width:9px;height:9px;background:var(--accent);margin-left:10px;vertical-align:4px}
+.lede{margin:0;font-size:13.5px;color:var(--muted);line-height:1.5}
+@media (max-width:760px){.float{position:static;width:auto;box-shadow:none;border:0;border-top:1px solid var(--rule);border-radius:0}#map{height:58vh}}
+.search{position:relative;display:flex;flex-direction:column;gap:4px;min-width:0}
+.sbox{display:flex;gap:6px}
+.sbox input{flex:1;min-width:0;font:500 15px var(--f-body);padding:8px 10px;border:0;border-bottom:1.5px solid var(--ink);background:transparent;color:var(--ink);border-radius:0}
+.sbox input:focus-visible{outline:none;border-bottom-color:var(--accent-ink)}
+.results{position:absolute;z-index:5;top:100%;left:0;right:0;margin:4px 0 0;padding:4px;list-style:none;background:var(--surface);border:1.5px solid var(--ink);border-radius:2px;box-shadow:0 8px 24px rgba(0,0,0,.18);max-height:300px;overflow:auto}
+.results li button{all:unset;box-sizing:border-box;display:block;width:100%;padding:7px 9px;cursor:pointer;font-size:13.5px;border-radius:2px}
+.results li button:hover,.results li button:focus-visible{background:var(--sunk)}
+.results li.msg{padding:7px 9px;color:var(--muted);font-size:13px}
+.float .status{font:500 11.5px var(--f-mono);color:var(--muted)}
+.float .status:empty{display:none}
+.mapctl{position:absolute;top:16px;right:16px;display:flex;flex-direction:column;gap:4px}
+.mapctl .btn{width:34px;height:34px;padding:0;font-size:18px;line-height:1;background:var(--surface);border-color:var(--rule);box-shadow:0 2px 8px rgba(20,30,35,.12)}
+.mapmsg{position:absolute;right:16px;top:50%;transform:translateY(-50%);width:min(380px,calc(100% - 400px));min-width:260px;background:var(--surface);border:1.5px solid var(--ink);border-radius:3px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;font-size:13.5px;box-shadow:0 8px 24px rgba(0,0,0,.15)}
+@media (max-width:760px){.mapmsg{left:16px;right:16px;width:auto;min-width:0}}
+.mapmsg b{font-family:var(--f-display);font-size:17px;font-weight:600}
+.mapmsg .btn{align-self:flex-start}
+.mapstat{position:absolute;right:56px;top:12px;font:500 11px var(--f-mono);color:var(--ink);background:var(--surface);border:1px solid var(--rule);padding:4px 8px;border-radius:2px;max-width:calc(100% - 440px)}
+@media (max-width:760px){.mapstat{max-width:calc(100% - 90px);left:16px;right:auto}}
+.maplibregl-ctrl-top-right{top:6px;right:6px}
+.pin{width:22px;height:30px;background:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 30'%3E%3Cpath d='M11 29C11 29 2 17.5 2 11a9 9 0 0 1 18 0c0 6.5-9 18-9 18z' fill='%23E2B007' stroke='%231E292D' stroke-width='1.6'/%3E%3Ccircle cx='11' cy='11' r='3.2' fill='%231E292D'/%3E%3C/svg%3E")}
+.attrib{position:absolute;right:8px;bottom:6px;font:400 10px var(--f-body);color:var(--muted);background:var(--map-land);padding:1px 5px;border-radius:2px;opacity:.9}
+.lotcard{padding:14px 0 0;border-top:1px solid var(--rule);display:flex;flex-direction:column;gap:10px;min-width:0}
+#lotBody{display:flex;flex-direction:column;gap:10px}
+.lotaddr-main{font:700 24px/1.05 var(--f-display);overflow-wrap:anywhere;text-wrap:balance}
+.lotspi-sm{font:500 12px var(--f-mono);color:var(--muted);margin-top:4px}
+.lotmore{font-size:12px;color:var(--muted);margin-top:4px}
+.btn.go{background:var(--accent);border-color:var(--ink);color:#1E292D;font-size:14px;padding:9px 14px}
+.btn.go:hover{filter:brightness(1.05)}
+.sites{display:flex;flex-direction:column;gap:6px}
+.site{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center;text-align:left;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--rule);border-radius:2px;padding:8px 10px;cursor:pointer}
+.site:hover{border-color:var(--muted)}
+.site.sel{border:1.5px solid var(--ink);box-shadow:inset 3px 0 0 var(--accent)}
+.site b{font-weight:600;font-size:13px;overflow-wrap:anywhere}
+.site small{font:500 11px var(--f-mono);color:var(--muted);grid-column:1}
+.site em{font:600 12px var(--f-mono);font-style:normal;color:var(--muted);grid-row:1/3;grid-column:2}
+details.paste summary{cursor:pointer;font-weight:600;font-size:13px}
+details.paste[open]{display:flex;flex-direction:column;gap:8px}
+.note{font-size:12px;color:var(--muted);border-left:3px solid var(--accent);padding:4px 0 4px 10px;margin:0}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1><span class="stripe" aria-hidden="true"></span>Bayline</h1>
+      <p>Car park test fits for Victorian sites · Clause 52.06 &amp; AS/NZS 2890.1</p>
+    </div>
+    <p class="hdr-src">Map: OpenFreeMap · © OpenMapTiles · © OpenStreetMap contributors. Lots, roads and addresses: Vicmap © State of Victoria, CC BY 4.0</p>
+  </header>
+
+  <section class="finder" aria-labelledby="h-find">
+    <div class="mapbox">
+      <div id="map" aria-label="Map of Victoria. Drag to pan, scroll to zoom, click a lot to select it."></div>
+      <div class="mapmsg" id="mapMsg" hidden></div>
+      <div class="mapstat" id="mapStat" hidden></div>
+    </div>
+    <div class="float">
+      <div class="eyebrow">Bayline · Melbourne</div>
+      <h2 id="h-find">Find the site</h2>
+      <p class="lede">Search an address or zoom in and click a lot. The car park layouts run on its title boundary.</p>
+      <form id="searchForm" class="search" autocomplete="off">
+        <label class="cap" for="address">Victorian address</label>
+        <div class="sbox">
+          <input id="address" type="search" placeholder="e.g. 133 Whitehall Street Footscray">
+          <button class="btn on" id="searchBtn" type="submit">Search</button>
+        </div>
+        <ul id="results" class="results" hidden></ul>
+      </form>
+      <small id="addrNote" class="status"></small>
+      <div class="lotcard" id="lotCard">
+        <div class="cap">Selected lot</div>
+        <div id="lotBody"><p class="hint">Nothing selected yet. Lots appear once you zoom in to a few blocks.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid">
+    <aside>
+      <section class="panel" aria-labelledby="h-lots">
+        <h2 id="h-lots">Vicmap lots <span id="lotsState">connecting…</span></h2>
+        <div id="sites" class="sites"></div>
+        <p class="hint" id="sitesHint">Lots you test-fit are saved in this browser.</p>
+        <details class="paste">
+          <summary>Paste a boundary instead</summary>
+          <div class="fld">
+            <label class="cap" for="pasteBox">GeoJSON, or lon, lat pairs one per line</label>
+            <textarea id="pasteBox" spellcheck="false" placeholder="144.9012, -37.8120&#10;144.9015, -37.8121&#10;…"></textarea>
+          </div>
+          <div class="row"><button class="btn" id="pasteBtn" type="button">Load boundary</button></div>
+          <p class="hint" id="pasteMsg">Export from VicPlan, QGIS or any GIS as GeoJSON (GDA2020 or WGS84 degrees).</p>
+        </details>
+      </section>
+
+      <section class="panel" aria-labelledby="h-site">
+        <h2 id="h-site">Site boundary <span id="siteArea">–</span></h2>
+        <div class="fld">
+          <label class="cap" for="shape">Lot shape</label>
+          <select id="shape">
+            <option value="rect">Rectangle</option>
+            <option value="trap">Tapered (trapezoid)</option>
+            <option value="splay">Corner lot with splay</option>
+            <option value="L">L-shaped</option>
+            <option value="custom">Custom vertices</option>
+          </select>
+        </div>
+        <div id="dims" class="row"></div>
+        <div class="fld" id="customBox" hidden>
+          <label class="cap" for="verts">Vertices (x, y in metres, one per line)</label>
+          <textarea id="verts" spellcheck="false"></textarea>
+          <p class="hint">Edge 1 runs from the first point to the second. You can also drag corners on the plan.</p>
+        </div>
+        <div class="row">
+          <div class="fld"><label class="cap" for="front">Street frontage</label><select id="front"></select></div>
+          <div class="fld"><label class="cap" for="entry">Crossover position <span id="entryV"></span></label><input id="entry" type="range" min="0.05" max="0.95" step="0.01"></div>
+        </div>
+        <div class="row">
+          <div class="fld"><label class="cap" for="setF">Front setback m</label><input id="setF" type="number" step="0.1" min="0"></div>
+          <div class="fld"><label class="cap" for="setO">Other boundaries m</label><input id="setO" type="number" step="0.1" min="0"></div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-bays">
+        <h2 id="h-bays">Bays &amp; aisles <span>metres</span></h2>
+        <div class="fld">
+          <label class="cap" for="std">Start from standard</label>
+          <select id="std"></select>
+        </div>
+        <div style="overflow-x:auto">
+        <table class="specs">
+          <thead><tr><th>Angle</th><th>Bay W</th><th>Bay L</th><th>Aisle</th></tr></thead>
+          <tbody id="specRows"></tbody>
+        </table>
+        </div>
+        <p class="hint">Tick the angles to test. Angled and parallel bays use one-way aisles in a loop; 90° bays use two-way aisles.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="h-circ">
+        <h2 id="h-circ">Access &amp; rules</h2>
+        <div class="row">
+          <div class="fld"><label class="cap" for="spineW">Main accessway m</label><input id="spineW" type="number" step="0.1" min="3"></div>
+          <div class="fld"><label class="cap" for="drvW">Crossover width m</label><input id="drvW" type="number" step="0.1" min="3"></div>
+        </div>
+        <div class="row">
+          <div class="fld"><label class="cap" for="acc">Accessible bays</label><input id="acc" type="number" step="1" min="0" max="20"></div>
+          <div class="fld"></div>
+        </div>
+        <label class="chk"><input type="checkbox" id="blind"> 1.0 m extension past last bay in dead-end aisles</label>
+        <label class="chk"><input type="checkbox" id="wall"> 0.3 m extra beside boundary walls</label>
+        <label class="chk"><input type="checkbox" id="sweep"> Try rotated grids (every 15°)</label>
+      </section>
+    </aside>
+
+    <main>
+      <section class="sheet">
+        <div class="planbox">
+          <div class="planbar">
+            <div class="t" id="planTitle">Layout</div>
+            <div class="tools">
+              <button class="btn" id="editBtn" type="button" aria-pressed="false">Edit corners</button>
+              <button class="btn" id="svgBtn" type="button" hidden>Save SVG</button>
+              <button class="btn" id="csvBtn" type="button" hidden>Save schedule CSV</button>
+            </div>
+          </div>
+          <canvas id="plan" aria-label="Car park plan"></canvas>
+          <div class="legend">
+            <span><i style="background:var(--surface)"></i>Car bay</span>
+            <span><i style="background:var(--access)"></i>Accessible bay</span>
+            <span><i style="background:repeating-linear-gradient(135deg,var(--accent) 0 3px,transparent 3px 6px)"></i>Shared zone</span>
+            <span><i style="background:var(--aisle);border-color:var(--aisle)"></i>Aisle / accessway</span>
+            <span><i style="border:1.5px dashed var(--site);background:transparent"></i>Setback line</span>
+          </div>
+        </div>
+        <div class="summary" id="summary"></div>
+      </section>
+
+      <section class="opts">
+        <h2>Layout iterations <span id="status"></span></h2>
+        <div class="optgrid" id="optgrid"></div>
+      </section>
+      <p class="note">Test-fit only. Bays are placed on a regular grid from each accessway, and every bay, aisle and crossover is checked against the boundary and setbacks. Ramps, grades, headroom, columns, sight distance and Clause 52.06-5 parking rates are not checked.</p>
+    </main>
+  </div>
+</div>
+
+<script>
+(()=>{
+"use strict";
+const $=s=>document.querySelector(s);
+const D2R=Math.PI/180;
+
+/* ---------- Standards presets ---------- */
+const VIC_ANG={p60:{on:true,W:2.6,L:4.9,A:4.9},p45:{on:false,W:2.6,L:4.9,A:3.5},par:{on:false,W:2.3,L:6.7,A:3.6}};
+const AS_ANG={p60:{on:true,W:2.5,L:5.4,A:4.6},p45:{on:false,W:2.5,L:5.4,A:3.7},par:{on:false,W:2.1,L:6.3,A:3.0}};
+const STD={
+  vic26:{label:"VIC 52.06 · 90° 2.6 × 4.9, aisle 6.4",p90:{W:2.6,L:4.9,A:6.4},ang:VIC_ANG,spine:6.4},
+  vic28:{label:"VIC 52.06 · 90° 2.8 × 4.9, aisle 5.8",p90:{W:2.8,L:4.9,A:5.8},ang:VIC_ANG,spine:6.1},
+  vic30:{label:"VIC 52.06 · 90° 3.0 × 4.9, aisle 5.2",p90:{W:3.0,L:4.9,A:5.2},ang:VIC_ANG,spine:6.1},
+  vic32:{label:"VIC 52.06 · 90° 3.2 × 4.9, aisle 4.8",p90:{W:3.2,L:4.9,A:4.8},ang:VIC_ANG,spine:6.1},
+  as1:{label:"AS 2890.1 Class 1 · 2.4 × 5.4, aisle 6.2",p90:{W:2.4,L:5.4,A:6.2},ang:AS_ANG,spine:6.2},
+  as1a:{label:"AS 2890.1 Class 1A residential · 2.4 × 5.4, aisle 5.8",p90:{W:2.4,L:5.4,A:5.8},ang:AS_ANG,spine:5.8},
+  as2:{label:"AS 2890.1 Class 2 · 2.5 × 5.4, aisle 5.8",p90:{W:2.5,L:5.4,A:5.8},ang:AS_ANG,spine:5.8},
+  as3:{label:"AS 2890.1 Class 3 · 2.6 × 5.4, aisle 5.8",p90:{W:2.6,L:5.4,A:5.8},ang:AS_ANG,spine:5.8},
+  custom:{label:"Custom (your numbers)"}
+};
+const TYPES=[["p90","90°",90],["p60","60°",60],["p45","45°",45],["par","Parallel",0]];
+
+function stdSpecs(key){
+  const s=STD[key];
+  return {p90:{on:true,...s.p90},p60:{...s.ang.p60},p45:{...s.ang.p45},par:{...s.ang.par}};
+}
+const DEF={
+  address:"",shape:"rect",
+  dims:{rect:{F:40,D:55},trap:{F:42,D:60,R:30,O:6},splay:{F:45,D:50,C:8},L:{F:48,D:60,NW:20,ND:24}},
+  custom:null,front:0,entry:0.3,setF:3,setO:0,
+  std:"vic26",specs:stdSpecs("vic26"),spineW:6.4,drvW:6.1,acc:2,blind:true,wall:true,sweep:true
+};
+const KEY="bayline-v1";
+function load(){try{const r=localStorage.getItem(KEY);if(!r)return null;const o=JSON.parse(r);return {...structuredClone(DEF),...o,dims:{...structuredClone(DEF.dims),...(o.dims||{})}}}catch(e){return null}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+let S=load()||structuredClone(DEF);
+
+/* ---------- Geometry ---------- */
+const sub=(a,b)=>({x:a.x-b.x,y:a.y-b.y}), add=(a,b)=>({x:a.x+b.x,y:a.y+b.y}), mul=(a,k)=>({x:a.x*k,y:a.y*k});
+const cross=(a,b)=>a.x*b.y-a.y*b.x, len=a=>Math.hypot(a.x,a.y), nrm=a=>{const l=len(a)||1;return {x:a.x/l,y:a.y/l}};
+function area(p){let s=0;for(let i=0;i<p.length;i++){const a=p[i],b=p[(i+1)%p.length];s+=a.x*b.y-b.x*a.y}return s/2}
+function inward(p,i,sg){const a=p[i],b=p[(i+1)%p.length],e=nrm(sub(b,a));return sg>0?{x:-e.y,y:e.x}:{x:e.y,y:-e.x}}
+function inset(p,ds){
+  const sg=Math.sign(area(p))||1,n=p.length,L=[];
+  for(let i=0;i<n;i++){const a=p[i],b=p[(i+1)%n],e=nrm(sub(b,a)),nn=inward(p,i,sg);L.push({P:add(a,mul(nn,ds[i])),e})}
+  const out=[];
+  for(let i=0;i<n;i++){
+    const l1=L[(i-1+n)%n],l2=L[i],c=cross(l1.e,l2.e);
+    if(Math.abs(c)<1e-9){out.push(l2.P);continue}
+    const t=cross(sub(l2.P,l1.P),l2.e)/c;out.push(add(l1.P,mul(l1.e,t)));
+  }
+  return out;
+}
+function pip(pt,Q){let c=false;for(let i=0,j=Q.length-1;i<Q.length;j=i++){const a=Q[i],b=Q[j];if((a.y>pt.y)!==(b.y>pt.y)&&pt.x<(b.x-a.x)*(pt.y-a.y)/(b.y-a.y)+a.x)c=!c}return c}
+function segX(p1,p2,p3,p4){const d1=cross(sub(p4,p3),sub(p1,p3)),d2=cross(sub(p4,p3),sub(p2,p3)),d3=cross(sub(p2,p1),sub(p3,p1)),d4=cross(sub(p2,p1),sub(p4,p1));return ((d1>1e-9&&d2<-1e-9)||(d1<-1e-9&&d2>1e-9))&&((d3>1e-9&&d4<-1e-9)||(d3<-1e-9&&d4>1e-9))}
+function inside(R,Q){
+  for(const p of R)if(!pip(p,Q))return false;
+  for(let i=0;i<R.length;i++){const a=R[i],b=R[(i+1)%R.length];for(let j=0;j<Q.length;j++)if(segX(a,b,Q[j],Q[(j+1)%Q.length]))return false}
+  return true;
+}
+function bbox(P){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const p of P){if(p.x<x0)x0=p.x;if(p.y<y0)y0=p.y;if(p.x>x1)x1=p.x;if(p.y>y1)y1=p.y}return {x0,y0,x1,y1}}
+function bbHit(a,b){return a.x0<b.x1-1e-6&&b.x0<a.x1-1e-6&&a.y0<b.y1-1e-6&&b.y0<a.y1-1e-6}
+function sat(A,B){
+  for(const P of [A,B])for(let i=0;i<P.length;i++){
+    const e=sub(P[(i+1)%P.length],P[i]),ax={x:-e.y,y:e.x};
+    let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;
+    for(const p of A){const d=p.x*ax.x+p.y*ax.y;if(d<a0)a0=d;if(d>a1)a1=d}
+    for(const p of B){const d=p.x*ax.x+p.y*ax.y;if(d<b0)b0=d;if(d>b1)b1=d}
+    const tol=1e-4*Math.max(1,len(ax));
+    if(a1<=b0+tol||b1<=a0+tol)return false;
+  }
+  return true;
+}
+function lineInts(Q,V){
+  const xs=[];
+  for(let i=0;i<Q.length;i++){const a=Q[i],b=Q[(i+1)%Q.length];if((a.y<=V&&b.y>V)||(b.y<=V&&a.y>V))xs.push(a.x+(V-a.y)*(b.x-a.x)/(b.y-a.y))}
+  xs.sort((a,b)=>a-b);const r=[];for(let i=0;i+1<xs.length;i+=2)r.push([xs[i],xs[i+1]]);return r;
+}
+function isect(A,B){const r=[];for(const a of A)for(const b of B){const lo=Math.max(a[0],b[0]),hi=Math.min(a[1],b[1]);if(hi>lo)r.push([lo,hi])}return r}
+function stripInts(Q,v0,v1){
+  const lines=[v0+1e-6,v1-1e-6,(v0+v1)/2];
+  for(const p of Q)if(p.y>v0&&p.y<v1)lines.push(p.y);
+  let r=lineInts(Q,lines[0]);for(let i=1;i<lines.length&&r.length;i++)r=isect(r,lineInts(Q,lines[i]));return r;
+}
+const rect=(u0,u1,v0,v1)=>[{x:u0,y:v0},{x:u1,y:v0},{x:u1,y:v1},{x:u0,y:v1}];
+const inRect=(p,r)=>p.x>=r[0].x-1e-6&&p.x<=r[2].x+1e-6&&p.y>=r[0].y-1e-6&&p.y<=r[2].y+1e-6;
+
+/* ---------- Site ---------- */
+function sitePoly(){
+  const d=S.dims;
+  switch(S.shape){
+    case "rect":{const {F,D}=d.rect;return [{x:0,y:0},{x:F,y:0},{x:F,y:D},{x:0,y:D}]}
+    case "trap":{const {F,D,R,O}=d.trap;return [{x:0,y:0},{x:F,y:0},{x:O+R,y:D},{x:O,y:D}]}
+    case "splay":{const {F,D,C}=d.splay;return [{x:0,y:0},{x:F-C,y:0},{x:F,y:C},{x:F,y:D},{x:0,y:D}]}
+    case "L":{const {F,D,NW,ND}=d.L;return [{x:0,y:0},{x:F,y:0},{x:F,y:D-ND},{x:F-NW,y:D-ND},{x:F-NW,y:D},{x:0,y:D}]}
+    default:return (S.custom&&S.custom.length>=3)?S.custom.map(p=>({...p})):[{x:0,y:0},{x:30,y:0},{x:30,y:40},{x:0,y:40}];
+  }
+}
+const DIMDEF={rect:[["F","Frontage m"],["D","Depth m"]],trap:[["F","Frontage m"],["D","Depth m"],["R","Rear width m"],["O","Rear offset m"]],splay:[["F","Frontage m"],["D","Depth m"],["C","Splay m"]],L:[["F","Frontage m"],["D","Depth m"],["NW","Notch width m"],["ND","Notch depth m"]]};
+
+/* ---------- Layout engine ---------- */
+function shapeFor(t,spec,s,d){
+  if(t==="par"){const rel=[{x:0,y:0},{x:spec.L,y:0},{x:spec.L,y:s*spec.W},{x:0,y:s*spec.W}];return {rel,stride:spec.L,depth:spec.W,minU:0,maxU:spec.L,lat:null}}
+  const th=(t==="p90"?90:t==="p60"?60:45)*D2R,c=Math.cos(th),sn=Math.sin(th);
+  const a={x:Math.abs(c)<1e-9?0:d*c,y:s*sn};
+  let b={x:-a.y,y:a.x};const b2={x:a.y,y:-a.x};
+  const ok=v=>s*v.y>=-1e-9;
+  if(!ok(b)||(ok(b2)&&Math.abs(b.y)<1e-9&&b2.x>b.x))b=b2;
+  const rel=[{x:0,y:0},mul(b,spec.W),add(mul(b,spec.W),mul(a,spec.L)),mul(a,spec.L)];
+  const xs=rel.map(p=>p.x);
+  return {rel,stride:spec.W/sn,depth:spec.L*sn+spec.W*c,minU:Math.min(...xs),maxU:Math.max(...xs),lat:b};
+}
+
+function buildCtx(){
+  const site=sitePoly(),n=site.length,fe=Math.min(S.front,n-1);
+  const ds=site.map((_,i)=>i===fe?S.setF:S.setO);
+  const usable=inset(site,ds);
+  const sg=Math.sign(area(site))||1;
+  const A=site[fe],B=site[(fe+1)%n];
+  const E=add(A,mul(sub(B,A),S.entry));
+  const nW=inward(site,fe,sg);
+  return {site,usable,E,nW,fe,frontDir:Math.atan2(B.y-A.y,B.x-A.x),siteArea:Math.abs(area(site))};
+}
+
+function frameCache(ctx,alpha){
+  const ca=Math.cos(alpha),sa=Math.sin(alpha);
+  const toF=p=>({x:p.x*ca+p.y*sa,y:-p.x*sa+p.y*ca});
+  const toW=p=>({x:p.x*ca-p.y*sa,y:p.x*sa+p.y*ca});
+  const Q=ctx.usable.map(toF),siteF=ctx.site.map(toF);
+  const Qs=Q.map(p=>({x:p.y,y:p.x}));
+  const bb=bbox(Q);
+  const nF={x:ctx.nW.x*ca+ctx.nW.y*sa,y:-ctx.nW.x*sa+ctx.nW.y*ca};
+  return {alpha,toF,toW,Q,Qs,siteF,bb,E:toF(ctx.E),nF};
+}
+
+function runLayout(ctx,fc,t,phase,mode){
+  const spec=S.specs[t],ext=S.blind?1.0:0,Ac=S.spineW,clr=S.wall?0.3:0;
+  const {Q,Qs,bb,E,nF,siteF}=fc;
+  const p90=S.specs.p90.on?S.specs.p90:null;
+  // 1. spines
+  let centers;
+  const lo=bb.x0+Ac/2,hi=bb.x1-Ac/2;
+  if(hi<lo)return null;
+  const bestNear=(start,dir)=>{let best=start,bl=-1;for(let k=0;k<=8;k++){const uc=start+dir*k;if(uc<lo-1e-6||uc>hi+1e-6)break;const iv=stripInts(Qs,uc-Ac/2,uc+Ac/2);const l=iv.reduce((m,x)=>Math.max(m,x[1]-x[0]),0);if(l>bl+0.5){bl=l;best=uc}}return best};
+  const uE=Math.min(hi,Math.max(lo,E.x));
+  if(mode==="entry"||mode==="spineOnly")centers=[uE];
+  else if(mode==="left")centers=[bestNear(lo,1)];
+  else if(mode==="right")centers=[bestNear(hi,-1)];
+  else centers=[bestNear(lo,1),bestNear(hi,-1)];
+  if(mode==="loop"&&centers[1]-centers[0]<Ac+3)return null;
+  const spines=[];
+  for(const uc of centers){
+    const iv=stripInts(Qs,uc-Ac/2,uc+Ac/2);if(!iv.length)return null;
+    let best=iv[0];for(const x of iv)if(x[1]-x[0]>best[1]-best[0])best=x;
+    spines.push({u0:uc-Ac/2,u1:uc+Ac/2,v0:best[0],v1:best[1]});
+  }
+  // 2. modules & aisle segments
+  const segs=[];
+  if(mode!=="spineOnly"){
+    const sTop=shapeFor(t,spec,1,1),Dp=sTop.depth,A=spec.A,M=2*Dp+A;
+    let k=0;
+    for(let v=bb.y0+phase*M-M;v<bb.y1;v+=M,k++){
+      const a0=v+Dp,a1=a0+A;
+      if(a1<bb.y0||a0>bb.y1)continue;
+      const okV=spines.every(sp=>a0>=sp.v0-1e-6&&a1<=sp.v1+1e-6);if(!okV)continue;
+      const iv=stripInts(Q,a0,a1);
+      const dir=(k%2===0)?1:-1;
+      for(const I of iv){
+        if(mode==="loop"){
+          const L=spines[0],R=spines[1];
+          if(I[0]<=L.u1+1e-6&&I[1]>=R.u0-1e-6)segs.push({lo:L.u1,hi:R.u0,attLo:true,attHi:true,v0:a0,v1:a1,dir});
+        }else{
+          const sp=spines[0];
+          if(I[0]<sp.u0-2&&I[1]>=sp.u0-1e-6)segs.push({lo:I[0],hi:sp.u0,attLo:false,attHi:true,v0:a0,v1:a1,dir});
+          if(I[1]>sp.u1+2&&I[0]<=sp.u1+1e-6)segs.push({lo:sp.u1,hi:I[1],attLo:true,attHi:false,v0:a0,v1:a1,dir});
+        }
+      }
+    }
+  }
+  // 3. crossover stub (from street to first accessway it meets)
+  const circ=[...spines.map(sp=>({r:rect(sp.u0,sp.u1,sp.v0,sp.v1),sp})),...segs.map(sg=>({r:rect(sg.lo,sg.hi,sg.v0,sg.v1),sg}))];
+  let hit=null,hitT=0;
+  for(let tt=0;tt<=40;tt+=0.2){
+    const P=add(E,mul(nF,tt));
+    if(tt>0.4&&!pip(P,siteF))break;
+    const h=circ.find(c=>inRect(P,c.r));if(h){hit=h;hitT=tt;break}
+  }
+  if(!hit)return null;
+  const tF={x:-nF.y,y:nF.x},w2=S.drvW/2,sl=hitT+0.6;
+  const stub=[add(E,mul(tF,-w2)),add(E,mul(tF,w2)),add(add(E,mul(tF,w2)),mul(nF,sl)),add(add(E,mul(tF,-w2)),mul(nF,sl))];
+  const stubBB=bbox(stub);
+  if(hit.sg)hit.sg.stubTarget=true;
+  const forb=[{p:stub,b:stubBB},...spines.map(sp=>{const r=rect(sp.u0,sp.u1,sp.v0,sp.v1);return {p:r,b:bbox(r)}})];
+  // 4. bays
+  const bays=[];let rowId=0;
+  const valid=(pts,lat,extra)=>{
+    let test=pts;
+    if(clr&&lat){const e=mul(lat,clr);test=[sub(pts[0],e),add(pts[1],e),add(pts[2],e),sub(pts[3],e)]}
+    if(!inside(test,Q))return false;
+    const b=bbox(pts);
+    for(const f of forb)if(bbHit(b,f.b)&&sat(pts,f.p))return false;
+    if(extra)for(const f of extra)if(bbHit(b,f.b)&&sat(pts,f.p))return false;
+    return true;
+  };
+  for(const sg of segs){
+    sg.bays=0;
+    for(const s of [-1,1]){
+      const sh=shapeFor(t,spec,s,t==="p90"?1:sg.dir);
+      const vE=s>0?sg.v1:sg.v0;
+      const l=sg.lo+(sg.attLo?0:ext),h=sg.hi-(sg.attHi?0:ext);
+      const span=sh.maxU-sh.minU;if(h-l<span)continue;
+      const fromHi=sg.attHi&&!sg.attLo;
+      const rid=rowId++;let i=0;
+      for(let k=0;;k++){
+        let ox;
+        if(fromHi){const top=h-k*sh.stride;if(top-span<l-1e-6)break;ox=top-sh.maxU}
+        else{const st=l+k*sh.stride;if(st+span>h+1e-6)break;ox=st-sh.minU}
+        const pts=sh.rel.map(c=>({x:c.x+ox,y:c.y+vE}));
+        if(valid(pts,sh.lat)){bays.push({pts,t,row:rid,i:k,seg:sg});sg.bays++;}
+        i++;
+      }
+    }
+  }
+  // keep aisles that serve bays or carry the crossover; trim free ends
+  const keep=segs.filter(sg=>sg.bays>0||sg.stubTarget);
+  for(const sg of keep){
+    const own=bays.filter(b=>b.seg===sg);
+    if(own.length){
+      const us=own.flatMap(b=>b.pts.map(p=>p.x));
+      if(!sg.attLo)sg.lo=Math.max(sg.lo,Math.min(...us)-ext);
+      if(!sg.attHi)sg.hi=Math.min(sg.hi,Math.max(...us)+ext);
+    }
+  }
+  // 5. bays along the main accessway (90° spec)
+  if(p90){
+    const segF=keep.map(sg=>{const r=rect(sg.lo,sg.hi,sg.v0,sg.v1);return {p:r,b:bbox(r)}});
+    const bayF=bays.map(b=>({p:b.pts,b:bbox(b.pts)}));
+    for(const sp of spines){
+      for(const side of [-1,1]){
+        const rid=rowId++;
+        const u0=side>0?sp.u1:sp.u0-p90.L,u1=side>0?sp.u1+p90.L:sp.u0;
+        const vs0=sp.v0+ext,vs1=sp.v1-ext;
+        for(let k=0;;k++){
+          const v=vs0+k*p90.W;if(v+p90.W>vs1+1e-6)break;
+          const pts=rect(u0,u1,v,v+p90.W);
+          if(valid(pts,{x:0,y:1},[...segF,...bayF])){bays.push({pts,t:"p90",row:rid,i:k,sp});bayF.push({p:pts,b:bbox(pts)})}
+        }
+      }
+    }
+  }
+  if(!bays.length)return null;
+  // trim spines to what they serve
+  const hitP=add(E,mul(nF,hitT));
+  for(const sp of spines){
+    let v0=1e9,v1=-1e9;
+    const inc=(a,b)=>{v0=Math.min(v0,a);v1=Math.max(v1,b)};
+    for(const sg of keep)if(sg.lo<=sp.u1+1e-6&&sg.hi>=sp.u0-1e-6)inc(sg.v0,sg.v1);
+    for(const b of bays)if(b.sp===sp){const bb2=bbox(b.pts);inc(bb2.y0-ext,bb2.y1+ext)}
+    if(hit.sp===sp){const half=Math.abs(nF.x)>0.5?w2:0;inc(hitP.y-half,hitP.y+half)}
+    else if(spines.length===1){/* stub meets an aisle */}
+    if(v0<v1){sp.v0=Math.max(sp.v0,v0);sp.v1=Math.min(sp.v1,v1)}
+    sp.used=v0<v1;
+  }
+  // 6. accessible bays (AS/NZS 2890.6: bay + shared zone alongside)
+  const eW={x:E.x,y:E.y};
+  let accN=0;
+  if(S.acc>0){
+    const cand=bays.filter(b=>b.t==="p90").map(b=>{const c=centroid(b.pts);return {b,d:Math.hypot(c.x-eW.x,c.y-eW.y)}}).sort((a,b)=>a.d-b.d);
+    for(const {b} of cand){
+      if(accN>=S.acc)break;if(b.kind)continue;
+      const nb=bays.find(o=>!o.kind&&o!==b&&o.row===b.row&&Math.abs(o.i-b.i)===1);
+      if(!nb)continue;b.kind="acc";nb.kind="shared";accN++;
+    }
+  }
+  const usedSp=spines.filter(sp=>sp.used);
+  const total=bays.filter(b=>b.kind!=="shared").length;
+  const blind=keep.filter(sg=>!sg.attLo||!sg.attHi).length+(mode!=="loop"?usedSp.length:0);
+  const circA=keep.reduce((m,sg)=>m+(sg.hi-sg.lo)*(sg.v1-sg.v0),0)+usedSp.reduce((m,sp)=>m+(sp.u1-sp.u0)*(sp.v1-sp.v0),0);
+  const runLen=hitT+usedSp.reduce((m,sp)=>Math.max(m,sp.v1-sp.v0),0)+keep.reduce((m,sg)=>Math.max(m,sg.hi-sg.lo),0);
+  const W=fc.toW;
+  return {
+    t,mode,alpha:fc.alpha,phase,total,acc:accN,circA,blind,runLen,stubLen:hitT,
+    oneWay:t!=="p90",
+    bays:bays.map(b=>({pts:b.pts.map(W),kind:b.kind||"std",t:b.t})),
+    aisles:keep.map(sg=>({pts:rect(sg.lo,sg.hi,sg.v0,sg.v1).map(W),dir:sg.dir,a:W({x:sg.lo,y:(sg.v0+sg.v1)/2}),b:W({x:sg.hi,y:(sg.v0+sg.v1)/2})})),
+    spines:usedSp.map(sp=>rect(sp.u0,sp.u1,sp.v0,sp.v1).map(W)),
+    stub:stub.map(W)
+  };
+}
+function centroid(P){let x=0,y=0;for(const p of P){x+=p.x;y+=p.y}return {x:x/P.length,y:y/P.length}}
+
+/* ---------- Iteration driver ---------- */
+let results=[],selKey=null,gen=0,ctxNow=null;
+function describe(r,ctx){
+  const rel=((r.alpha-ctx.frontDir)/D2R%180+180)%180;
+  const orient=Math.abs(rel)<1||Math.abs(rel-180)<1?"aisles parallel to street":Math.abs(rel-90)<1?"aisles square to street":`grid rotated ${Math.round(rel)}°`;
+  const angle=TYPES.find(x=>x[0]===r.t)[1];
+  const m={entry:"central accessway",left:"accessway at one side",right:"accessway at far side",loop:"one-way loop",spineOnly:"single accessway"}[r.mode];
+  return {angle,orient,m};
+}
+function keyOf(r){return `${r.t}|${r.mode}|${Math.round(r.alpha/D2R)}|${r.phase.toFixed(2)}`}
+
+function recompute(){
+  const my=++gen;
+  ctxNow=buildCtx();
+  const ctx=ctxNow;
+  const types=TYPES.filter(([k])=>S.specs[k].on).map(x=>x[0]);
+  const alphas=new Set();const base=ctx.frontDir;
+  const addA=a=>{let d=((a/D2R)%180+180)%180;alphas.add(Math.round(d*100)/100)};
+  addA(base);addA(base+90*D2R);
+  if(S.sweep)for(let k=0;k<12;k++)addA(base+k*15*D2R);
+  const jobs=[];
+  for(const a of alphas){
+    for(const t of types){
+      const modes=t==="p90"?["entry","left","right","loop","spineOnly"]:["loop"];
+      for(const m of modes){
+        const phs=m==="spineOnly"?[0]:[0,1/6,2/6,3/6,4/6,5/6];
+        for(const ph of phs)jobs.push([a*D2R,t,ph,m]);
+      }
+    }
+  }
+  $("#status").textContent=jobs.length?`testing ${jobs.length} layouts…`:"";
+  const found=[];const caches=new Map();
+  let i=0;
+  const step=()=>{
+    if(my!==gen)return;
+    const t0=performance.now();
+    while(i<jobs.length&&performance.now()-t0<14){
+      const [a,t,ph,m]=jobs[i++];
+      let fc=caches.get(a);if(!fc){fc=frameCache(ctx,a);caches.set(a,fc)}
+      try{const r=runLayout(ctx,fc,t,ph,m);if(r)found.push(r)}catch(e){}
+    }
+    if(i<jobs.length){$("#status").textContent=`testing ${i} / ${jobs.length}…`;setTimeout(step,0);return}
+    finish(found,jobs.length,ctx);
+  };
+  if(!jobs.length){finish([],0,ctx);return}
+  step();
+}
+function finish(found,n,ctx){
+  found.sort((a,b)=>b.total-a.total||b.acc-a.acc||a.circA-b.circA);
+  const seen=new Set(),out=[];
+  for(const r of found){
+    const sig=`${r.t}|${r.total}|${Math.round(r.alpha/D2R)}`;
+    if(seen.has(sig))continue;seen.add(sig);out.push(r);
+    if(out.length>=12)break;
+  }
+  // keep at least one per bay type if possible
+  for(const [t] of TYPES){if(!out.some(r=>r.t===t)){const r=found.find(x=>x.t===t);if(r){if(out.length>=12)out.pop();out.push(r)}}}
+  results=out;
+  if(!results.some(r=>keyOf(r)===selKey))selKey=results[0]?keyOf(results[0]):null;
+  $("#status").textContent=n?`${n} tested · best ${results.length} shown`:"";
+  renderOptions();renderSelected();
+}
+let tmr=null;function schedule(){clearTimeout(tmr);tmr=setTimeout(recompute,160);save()}
+
+/* ---------- Drawing ---------- */
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function palette(){return {sea:css("--map-sea"),land:css("--map-land"),built:css("--map-built"),park:css("--map-park"),road:css("--map-road"),rcase:css("--map-case"),mlabel:css("--map-label"),lot:css("--map-lot"),major:css("--map-major"),bg:css("--surface"),ink:css("--ink"),muted:css("--muted"),site:css("--site"),aisle:css("--aisle"),paint:css("--paint"),accent:css("--accent"),access:css("--access"),rule:css("--rule"),sunk:css("--sunk")}}
+function fit(cv,ctx,pad){
+  const r=cv.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+  const W=Math.max(10,r.width),H=Math.max(10,r.height);
+  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}
+  const bb=bbox(ctx.site);const sx=(W-2*pad)/Math.max(1,bb.x1-bb.x0),sy=(H-2*pad)/Math.max(1,bb.y1-bb.y0);const k=Math.min(sx,sy);
+  const ox=(W-(bb.x1-bb.x0)*k)/2-bb.x0*k,oy=(H+(bb.y1-bb.y0)*k)/2+bb.y0*k;
+  return {k,dpr,W,H,tx:p=>({x:ox+p.x*k,y:oy-p.y*k}),inv:(x,y)=>({x:(x-ox)/k,y:(oy-y)/k})};
+}
+function poly(g,T,P){g.beginPath();P.forEach((p,i)=>{const q=T.tx(p);i?g.lineTo(q.x,q.y):g.moveTo(q.x,q.y)});g.closePath()}
+function draw(cv,ctx,r,opt){
+  const c=palette(),g=cv.getContext("2d"),T=opt.fixed||fit(cv,ctx,opt.pad);
+  g.setTransform(T.dpr,0,0,T.dpr,0,0);
+  g.fillStyle=c.bg;g.fillRect(0,0,T.W,T.H);
+  // site
+  poly(g,T,ctx.site);g.fillStyle=c.sunk;g.fill();
+  if(r){
+    g.fillStyle=c.aisle;
+    for(const a of r.aisles){poly(g,T,a.pts);g.fill()}
+    for(const s of r.spines){poly(g,T,s);g.fill()}
+    poly(g,T,r.stub);g.fill();
+  }
+  // setback
+  g.save();g.setLineDash(opt.small?[3,3]:[6,5]);g.lineWidth=1;g.strokeStyle=c.site;poly(g,T,ctx.usable);g.stroke();g.restore();
+  if(r){
+    const hatch=g.createPattern(hatchTile(c.accent),"repeat");
+    for(const b of r.bays){
+      poly(g,T,b.pts);
+      g.fillStyle=b.kind==="acc"?c.access:b.kind==="shared"?hatch:c.bg;g.fill();
+      g.lineWidth=opt.small?0.6:1.1;g.strokeStyle=c.paint;g.stroke();
+    }
+    if(!opt.small){
+      // numbers
+      const fs=Math.min(11,Math.max(0,T.k*0.9));
+      if(fs>=7){
+        g.font=`500 ${fs}px "IBM Plex Mono",monospace`;g.textAlign="center";g.textBaseline="middle";
+        let n=0;for(const b of r.bays){if(b.kind==="shared")continue;n++;const m=T.tx(centroid(b.pts));g.fillStyle=b.kind==="acc"?"#fff":c.muted;g.fillText(b.kind==="acc"?"A":n,m.x,m.y)}
+      }
+      // one-way arrows
+      if(r.oneWay){
+        g.strokeStyle=c.accent;g.fillStyle=c.accent;g.lineWidth=2;
+        for(const a of r.aisles){
+          const p=T.tx(a.dir>0?a.a:a.b),q=T.tx(a.dir>0?a.b:a.a);
+          const L=Math.hypot(q.x-p.x,q.y-p.y);if(L<40)continue;
+          const ux=(q.x-p.x)/L,uy=(q.y-p.y)/L;
+          for(let s=30;s<L-20;s+=Math.max(60,L/3)){const x=p.x+ux*s,y=p.y+uy*s;g.beginPath();g.moveTo(x-ux*14,y-uy*14);g.lineTo(x,y);g.stroke();g.beginPath();g.moveTo(x+ux*6,y+uy*6);g.lineTo(x-ux*4-uy*6,y-uy*4+ux*6);g.lineTo(x-ux*4+uy*6,y-uy*4-ux*6);g.closePath();g.fill()}
+        }
+      }
+    }
+  }
+  // boundary
+  poly(g,T,ctx.site);g.lineWidth=opt.small?1.2:2;g.strokeStyle=c.site;g.stroke();
+  // frontage
+  const n=ctx.site.length,A=T.tx(ctx.site[ctx.fe]),B=T.tx(ctx.site[(ctx.fe+1)%n]);
+  g.lineWidth=opt.small?3:5;g.strokeStyle=c.ink;g.beginPath();g.moveTo(A.x,A.y);g.lineTo(B.x,B.y);g.stroke();
+  // entry marker
+  const e=T.tx(ctx.E),nn={x:ctx.nW.x,y:-ctx.nW.y};
+  g.fillStyle=c.accent;g.strokeStyle=c.ink;g.lineWidth=1;
+  const s=opt.small?5:9;g.beginPath();g.moveTo(e.x+nn.x*s*1.6,e.y+nn.y*s*1.6);g.lineTo(e.x-nn.y*s-nn.x*s*0.6,e.y+nn.x*s-nn.y*s*0.6);g.lineTo(e.x+nn.y*s-nn.x*s*0.6,e.y-nn.x*s-nn.y*s*0.6);g.closePath();g.fill();g.stroke();
+  if(!opt.small){
+    // edge lengths
+    g.font=`500 11px "IBM Plex Mono",monospace`;g.textAlign="center";g.textBaseline="middle";
+    const sg=Math.sign(area(ctx.site))||1;
+    for(let i=0;i<n;i++){
+      const a=ctx.site[i],b=ctx.site[(i+1)%n],m=mul(add(a,b),0.5),nw=inward(ctx.site,i,sg),q=T.tx(add(m,mul(nw,-1.6/Math.max(0.2,T.k/14))));
+      const L=len(sub(b,a));const rd=roadFor(i);
+      if(L<6&&i!==ctx.fe&&!rd)continue;
+      const txt=(rd?rd+" · ":i===ctx.fe?"STREET · ":"")+L.toFixed(1)+" m";
+      const w=g.measureText(txt).width+8;g.fillStyle=c.bg;g.fillRect(q.x-w/2,q.y-8,w,16);g.fillStyle=i===ctx.fe?c.ink:c.muted;g.fillText(txt,q.x,q.y);
+    }
+    // scale bar
+    const step=[5,10,20,50].find(v=>v*T.k>70)||50,px=step*T.k,x0=16,y0=T.H-18;
+    g.fillStyle=c.ink;g.fillRect(x0,y0,px/2,4);g.strokeStyle=c.ink;g.lineWidth=1;g.strokeRect(x0+0.5,y0+0.5,px,4);
+    g.font=`500 10px "IBM Plex Mono",monospace`;g.textAlign="left";g.fillText(`0`,x0-2,y0-8);g.textAlign="right";g.fillText(`${step} m`,x0+px+4,y0-8);
+    if(opt.edit){for(const p of ctx.site){const q=T.tx(p);g.fillStyle=c.accent;g.strokeStyle=c.ink;g.lineWidth=1.5;g.beginPath();g.rect(q.x-6,q.y-6,12,12);g.fill();g.stroke()}}
+  }
+  return T;
+}
+let hatchCache={};function hatchTile(col){if(hatchCache[col])return hatchCache[col];const t=document.createElement("canvas");t.width=t.height=8;const g=t.getContext("2d");g.strokeStyle=col;g.lineWidth=2;g.beginPath();g.moveTo(0,8);g.lineTo(8,0);g.moveTo(-2,2);g.lineTo(2,-2);g.moveTo(6,10);g.lineTo(10,6);g.stroke();hatchCache[col]=t;return t}
+
+/* ---------- Checks ---------- */
+function vicOK(t,s){if(t==="p90")return s.L>=4.9&&((s.W>=2.6&&s.A>=6.4)||(s.W>=2.8&&s.A>=5.8)||(s.W>=3.0&&s.A>=5.2)||(s.W>=3.2&&s.A>=4.8));if(t==="p60")return s.W>=2.6&&s.L>=4.9&&s.A>=4.9;if(t==="p45")return s.W>=2.6&&s.L>=4.9&&s.A>=3.5;return s.W>=2.3&&s.L>=6.7&&s.A>=3.6}
+function asClass(t,s){
+  if(t==="p90"){if(s.L<5.4)return null;const c=[["3",2.6,5.8],["2",2.5,5.8],["1",2.4,6.2],["1A",2.4,5.8]].filter(([,w,a])=>s.W>=w&&s.A>=a).map(x=>x[0]);return c.length?c:null}
+  if(t==="p60")return s.L>=5.4&&s.W>=2.5&&s.A>=4.6?["App B"]:null;
+  if(t==="p45")return s.L>=5.4&&s.W>=2.5&&s.A>=3.7?["App B"]:null;
+  return s.L>=6.3&&s.W>=2.1&&s.A>=3.0?["indicative"]:null;
+}
+function checks(r){
+  const out=[],types=[...new Set(r.bays.map(b=>b.t))];
+  for(const t of types){
+    const s=S.specs[t],nm=TYPES.find(x=>x[0]===t)[1];
+    out.push(vicOK(t,s)?["ok",`${nm} bays ${s.W} × ${s.L} m, aisle ${s.A} m meet Clause 52.06-9 Table 2.`]:["bad",`${nm} bays ${s.W} × ${s.L} m, aisle ${s.A} m fall short of Clause 52.06-9 Table 2.`]);
+    const a=asClass(t,s);
+    out.push(a?["ok",t==="p90"?`Meets AS/NZS 2890.1 user class ${a.join(", ")} (90°).`:`Meets AS/NZS 2890.1 ${a[0]} values for ${nm} (one-way aisle). Confirm against Figure 2.2.`]:["warn",`${nm} dimensions are below AS/NZS 2890.1 for any user class. Fine if the council accepts Clause 52.06 sizes.`]);
+  }
+  out.push(S.drvW>=3?["ok",`Crossover ${S.drvW} m is at least the 3.0 m accessway minimum.`]:["bad",`Crossover ${S.drvW} m is narrower than the 3.0 m accessway minimum.`]);
+  if(r.total>=10&&r.runLen>50)out.push(S.drvW>=5?["ok",`Accessway run ~${Math.round(r.runLen)} m serves ${r.total} bays: the ${S.drvW} m crossover can act as the 5 m × 7 m passing area at the entrance.`]:["warn",`Accessway run ~${Math.round(r.runLen)} m serves ${r.total} bays: provide a 5 m wide, 7 m long passing area at the entrance (Clause 52.06-9).`]);
+  else if(r.total>=10)out.push(["info","10+ bays: a 5 m × 7 m passing area is also required if the accessway connects to a Road Zone."]);
+  if(S.spineW<5.5)out.push(["warn",`Main accessway ${S.spineW} m is below the 5.5 m usually needed for two-way traffic.`]);
+  if(r.blind)out.push(S.blind?["info",`${r.blind} dead-end aisle${r.blind>1?"s":""}: the 1.0 m extension is applied. Check cars can turn and leave forwards (required when an accessway serves 4+ bays).`]:["warn",`${r.blind} dead-end aisle${r.blind>1?"s":""} with no extension past the last bay. AS/NZS 2890.1 asks for 1.0 m.`]);
+  if(S.acc>0)out.push(r.acc>=S.acc?["ok",`${r.acc} accessible bay${r.acc>1?"s":""} with shared zone, placed nearest the crossover (AS/NZS 2890.6).`]:["warn",`Only ${r.acc} of ${S.acc} accessible bays fit beside a 90° bay pair.`]);
+  if(S.acc>0&&S.specs.p90.W<2.4)out.push(["warn","Accessible bays need 2.4 m width plus a 2.4 m shared zone. Your 90° width is smaller."]);
+  out.push(["info","Use a 4 m internal radius at accessway bends, or widen beyond 4.2 m."]);
+  return out;
+}
+
+/* ---------- UI ---------- */
+function renderOptions(){
+  const g=$("#optgrid");g.innerHTML="";
+  if(!results.length){g.innerHTML=`<div class="empty">No layout fits with these settings. Try a smaller setback, narrower aisle, or another bay angle.</div>`;return}
+  results.forEach((r,i)=>{
+    const d=describe(r,ctxNow);
+    const b=document.createElement("button");b.type="button";b.className="opt"+(keyOf(r)===selKey?" sel":"");
+    b.innerHTML=`<canvas></canvas><div class="meta"><span class="rank">Option ${i+1}</span><b>${r.total}<small>bays</small></b><span>${d.angle} · ${d.m}</span><span>${d.orient}</span></div>`;
+    b.addEventListener("click",()=>{selKey=keyOf(r);renderOptions();renderSelected()});
+    g.appendChild(b);
+    requestAnimationFrame(()=>draw(b.querySelector("canvas"),ctxNow,r,{pad:8,small:true}));
+  });
+}
+function cur(){return results.find(r=>keyOf(r)===selKey)||null}
+function renderSelected(){
+  if(!ctxNow)return;
+  const r=cur(),ctx=ctxNow;
+  draw($("#plan"),ctx,r,{pad:34,edit:editing});
+  const addr=S.address.trim();
+  $("#planTitle").textContent=(addr||"Example site")+(r?` · Option ${results.indexOf(r)+1}`:"");
+  $("#siteArea").textContent=`${Math.round(ctx.siteArea).toLocaleString()} m²`;
+  const sm=$("#summary");
+  const showDl=!!downloads&&!!r;$("#svgBtn").hidden=!showDl;$("#csvBtn").hidden=!showDl;
+  if(!r){sm.innerHTML=`<p class="hint">No layout yet.</p>`;return}
+  const d=describe(r,ctx);
+  const ck=checks(r);
+  sm.innerHTML=`
+    <div><div class="cap">Car bays</div><div class="big"><b>${r.total}</b><span>${d.angle}</span></div></div>
+    <dl class="kv">
+      <dt>Accessible</dt><dd>${r.acc}</dd>
+      <dt>Site per bay</dt><dd>${(ctx.siteArea/r.total).toFixed(1)} m²</dd>
+      <dt>Aisles &amp; accessway</dt><dd>${Math.round(r.circA)} m²</dd>
+      <dt>Crossover to aisle</dt><dd>${r.stubLen.toFixed(1)} m</dd>
+      <dt>Circulation</dt><dd style="font-family:var(--f-body)">${d.m}</dd>
+      <dt>Grid</dt><dd style="font-family:var(--f-body)">${d.orient}</dd>
+    </dl>
+    <div><div class="cap" style="margin-bottom:6px">Checks</div><ul class="checks">${ck.map(([k,t])=>`<li><span class="pill ${k}">${{ok:"pass",warn:"check",bad:"fail",info:"note"}[k]}</span><span>${t}</span></li>`).join("")}</ul></div>`;
+}
+
+function renderDims(){
+  const box=$("#dims");box.innerHTML="";
+  $("#customBox").hidden=S.shape!=="custom";
+  if(S.shape==="custom"){
+    if(!S.custom)S.custom=sitePolyFrom("rect");
+    $("#verts").value=S.custom.map(p=>`${+p.x.toFixed(2)}, ${+p.y.toFixed(2)}`).join("\n");
+    return;
+  }
+  for(const [k,lab] of DIMDEF[S.shape]){
+    const f=document.createElement("div");f.className="fld";
+    const id="dim_"+k;
+    f.innerHTML=`<label class="cap" for="${id}">${lab}</label><input id="${id}" type="number" step="0.1" min="0" value="${S.dims[S.shape][k]}">`;
+    f.querySelector("input").addEventListener("input",e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=0){S.dims[S.shape][k]=v;renderFront();schedule()}});
+    box.appendChild(f);
+  }
+}
+function sitePolyFrom(shape){const keep=S.shape;S.shape=shape;const p=sitePoly();S.shape=keep;return p}
+function renderFront(){
+  const p=sitePoly(),sel=$("#front");sel.innerHTML="";
+  if(S.front>=p.length)S.front=0;
+  p.forEach((a,i)=>{const b=p[(i+1)%p.length];const o=document.createElement("option");o.value=i;const rd=roadFor(i);o.textContent=`Edge ${i+1} · ${len(sub(b,a)).toFixed(1)} m${rd?" · "+titleCase(rd):""}`;sel.appendChild(o)});
+  sel.value=S.front;
+}
+function renderSpecs(){
+  const tb=$("#specRows");tb.innerHTML="";
+  for(const [k,lab] of TYPES){
+    const s=S.specs[k];const tr=document.createElement("tr");
+    tr.innerHTML=`<td><label class="chk"><input type="checkbox" id="on_${k}" ${s.on?"checked":""}><span class="ang">${lab}</span></label></td>`+
+      ["W","L","A"].map(f=>`<td><input type="number" id="${k}_${f}" step="0.1" min="0.5" value="${s[f]}" aria-label="${lab} ${f==="W"?"bay width":f==="L"?"bay length":"aisle width"}"></td>`).join("");
+    tb.appendChild(tr);
+    tr.querySelector(`#on_${k}`).addEventListener("change",e=>{s.on=e.target.checked;schedule()});
+    for(const f of ["W","L","A"])tr.querySelector(`#${k}_${f}`).addEventListener("input",e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>0){s[f]=v;S.std="custom";$("#std").value="custom";schedule()}});
+  }
+}
+function bind(){
+  const std=$("#std");for(const [k,v] of Object.entries(STD)){const o=document.createElement("option");o.value=k;o.textContent=v.label;std.appendChild(o)}
+  std.value=S.std;
+  std.addEventListener("change",()=>{S.std=std.value;if(S.std!=="custom"){const on={};for(const [k] of TYPES)on[k]=S.specs[k].on;S.specs=stdSpecs(S.std);for(const [k] of TYPES)S.specs[k].on=on[k];S.spineW=STD[S.std].spine;$("#spineW").value=S.spineW}renderSpecs();schedule()});
+  $("#shape").value=S.shape;
+  $("#shape").addEventListener("change",e=>{const prev=sitePoly();S.shape=e.target.value;if(S.shape==="custom")S.custom=prev;renderDims();renderFront();schedule()});
+  $("#verts").addEventListener("input",e=>{
+    const pts=e.target.value.split(/\n/).map(l=>l.split(/[,\s]+/).filter(Boolean).map(Number)).filter(a=>a.length>=2&&a.every(isFinite)).map(a=>({x:a[0],y:a[1]}));
+    if(pts.length>=3){S.custom=pts;renderFront();schedule()}
+  });
+  $("#front").addEventListener("change",e=>{S.front=+e.target.value;schedule()});
+  const en=$("#entry");en.value=S.entry;$("#entryV").textContent=Math.round(S.entry*100)+"%";
+  en.addEventListener("input",()=>{S.entry=+en.value;$("#entryV").textContent=Math.round(S.entry*100)+"%";schedule()});
+  const num=(id,key,min)=>{const el=$(id);el.value=S[key];el.addEventListener("input",()=>{const v=parseFloat(el.value);if(isFinite(v)&&v>=min){S[key]=v;schedule()}})};
+  num("#setF","setF",0);num("#setO","setO",0);num("#spineW","spineW",3);num("#drvW","drvW",3);num("#acc","acc",0);
+  const tog=(id,key)=>{const el=$(id);el.checked=S[key];el.addEventListener("change",()=>{S[key]=el.checked;schedule()})};
+  tog("#blind","blind");tog("#wall","wall");tog("#sweep","sweep");
+  $("#editBtn").addEventListener("click",()=>{editing=!editing;$("#editBtn").classList.toggle("on",editing);$("#editBtn").setAttribute("aria-pressed",editing);$("#plan").classList.toggle("editing",editing);renderSelected()});
+  $("#svgBtn").addEventListener("click",()=>doSave("svg"));
+  $("#csvBtn").addEventListener("click",()=>doSave("csv"));
+}
+
+/* ---------- Corner dragging ---------- */
+let editing=false,drag=-1,lastT=null;
+const plan=$("#plan");
+plan.addEventListener("pointerdown",e=>{
+  if(!editing)return;
+  const r=plan.getBoundingClientRect(),T=fit(plan,ctxNow,34),p=sitePoly();
+  let best=-1,bd=16;p.forEach((v,i)=>{const q=T.tx(v),d=Math.hypot(q.x-(e.clientX-r.left),q.y-(e.clientY-r.top));if(d<bd){bd=d;best=i}});
+  if(best<0)return;
+  if(S.shape!=="custom"){S.custom=p;S.shape="custom";$("#shape").value="custom";renderDims()}
+  drag=best;lastT=T;plan.setPointerCapture(e.pointerId);e.preventDefault();
+});
+plan.addEventListener("pointermove",e=>{
+  if(drag<0)return;
+  const r=plan.getBoundingClientRect(),w=lastT.inv(e.clientX-r.left,e.clientY-r.top);
+  S.custom[drag]={x:Math.round(w.x*10)/10,y:Math.round(w.y*10)/10};
+  ctxNow=buildCtx();draw(plan,ctxNow,null,{pad:34,edit:true,fixed:lastT});
+  $("#verts").value=S.custom.map(p=>`${p.x}, ${p.y}`).join("\n");
+});
+const endDrag=()=>{if(drag<0)return;drag=-1;renderFront();schedule()};
+plan.addEventListener("pointerup",endDrag);plan.addEventListener("pointercancel",endDrag);
+
+/* ---------- Saving files ---------- */
+const downloads={save:async({filename,data})=>{const url=URL.createObjectURL(new Blob([data],{type:filename.endsWith(".svg")?"image/svg+xml":"text/csv"}));const a=document.createElement("a");a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)}};
+function buildSVG(r,ctx){
+  const bb=bbox(ctx.site),pad=4,W=bb.x1-bb.x0+2*pad,H=bb.y1-bb.y0+2*pad;
+  const P=pts=>pts.map(p=>`${(p.x-bb.x0+pad).toFixed(3)},${(bb.y1-p.y+pad).toFixed(3)}`).join(" ");
+  let s=`<svg xmlns="http://www.w3.org/2000/svg" width="${(W*10).toFixed(0)}mm" height="${(H*10).toFixed(0)}mm" viewBox="0 0 ${W.toFixed(3)} ${H.toFixed(3)}">\n<!-- Units: metres. Scale 1:100 at the stated mm size. ${esc(S.address||"Example site")} -->\n<rect width="100%" height="100%" fill="#ffffff"/>\n`;
+  s+=`<g id="aisles" fill="#d9ddd9">${[...r.aisles.map(a=>a.pts),...r.spines,r.stub].map(p=>`<polygon points="${P(p)}"/>`).join("")}</g>\n`;
+  s+=`<polygon id="setback" points="${P(ctx.usable)}" fill="none" stroke="#2c6a88" stroke-width="0.08" stroke-dasharray="0.5 0.4"/>\n`;
+  s+=`<g id="bays" stroke="#1e292d" stroke-width="0.08">${r.bays.map(b=>`<polygon points="${P(b.pts)}" fill="${b.kind==="acc"?"#2b63c9":b.kind==="shared"?"#e2b007":"#ffffff"}"/>`).join("")}</g>\n`;
+  s+=`<polygon id="boundary" points="${P(ctx.site)}" fill="none" stroke="#2c6a88" stroke-width="0.2"/>\n</svg>\n`;
+  return s;
+}
+function esc(t){return String(t).replace(/[<>&-]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;","-":"–"}[c]))}
+function buildCSV(r,ctx){
+  const rows=[["bay","type","kind","centre_x_m","centre_y_m","width_m","length_m"]];let n=0;
+  for(const b of r.bays){if(b.kind==="shared")continue;n++;const c=centroid(b.pts),s=S.specs[b.t];rows.push([n,TYPES.find(x=>x[0]===b.t)[1],b.kind==="acc"?"accessible":"standard",c.x.toFixed(2),c.y.toFixed(2),s.W,s.L])}
+  return [`# ${S.address||"Example site"}`,`# site area ${ctx.siteArea.toFixed(1)} m2, ${r.total} bays`,...rows.map(r=>r.join(","))].join("\n");
+}
+async function doSave(kind){
+  const r=cur();if(!r||!downloads)return;
+  const base=(S.address.trim()||"car-park").replace(/[^\w]+/g,"-").replace(/^-|-$/g,"").slice(0,60)||"car-park";
+  try{await downloads.save(kind==="svg"?{filename:`${base}-option-${results.indexOf(r)+1}.svg`,data:buildSVG(r,ctxNow)}:{filename:`${base}-bays.csv`,data:buildCSV(r,ctxNow)})}
+  catch(e){if(e&&["unavailable","not_granted","capability_disabled","capability_removed"].includes(e.code)){downloads=null;renderSelected()}}
+}
+
+/* ---------- Vicmap lots ---------- */
+function projectRing(ring){
+  const lon0=ring.reduce((m,p)=>m+p[0],0)/ring.length,lat0=ring.reduce((m,p)=>m+p[1],0)/ring.length;
+  const kx=111320*Math.cos(lat0*D2R),ky=110574;
+  let pts=ring.map(p=>({x:+((p[0]-lon0)*kx).toFixed(2),y:+((p[1]-lat0)*ky).toFixed(2)}));
+  if(pts.length>1&&Math.hypot(pts[0].x-pts.at(-1).x,pts[0].y-pts.at(-1).y)<0.05)pts.pop();
+  const bb=bbox(pts);return pts.map(p=>({x:+(p.x-bb.x0).toFixed(2),y:+(p.y-bb.y0).toFixed(2)}));
+}
+function loadLot(doc,id,fly=true){
+  const pts=projectRing(doc.ring);if(pts.length<3)return;
+  S.custom=pts;S.shape="custom";S.front=Math.min(doc.front||0,pts.length-1);
+  S.address=doc.address||"";S.lot={id,spi:doc.spi||"",roads:doc.roads||[],address:doc.address||""};
+  $("#shape").value="custom";$("#address").value=S.address;
+  renderDims();renderFront();renderSites();schedule();
+  if(fly&&doc.ring&&doc.ring.length){fitRing(doc.ring);const r=doc.ring.map(q=>toM(q[0],q[1]));const bb=bbox(r);pendingPick={x:(bb.x0+bb.x1)/2,y:(bb.y0+bb.y1)/2};pendingAddr=doc.address;if(M.ready)afterLoad()}
+}
+function roadFor(i){const r=S.lot&&S.shape==="custom"?S.lot.roads.find(x=>x.edge===i):null;return r?r.road:null}
+let sites=[];
+function renderSites(){
+  const box=$("#sites");box.innerHTML="";
+  $("#sitesHint").hidden=sites.length>0;
+  for(const s of sites){
+    const d=s.data();const b=document.createElement("button");b.type="button";
+    b.className="site"+(S.lot&&S.lot.id===s.id&&S.shape==="custom"?" sel":"");
+    b.innerHTML=`<b></b><small></small><em>${Math.round(d.areaM2||0).toLocaleString()} m²</em>`;
+    b.querySelector("b").textContent=titleCase(d.address||s.id);
+    b.querySelector("small").textContent=`Lot ${d.spi||"–"}${d.roads&&d.roads.length?" · "+[...new Set(d.roads.map(r=>titleCase(r.road)))].join(", "):""}`;
+    b.addEventListener("click",()=>loadLot(d,s.id));box.appendChild(b);
+  }
+  const note=$("#addrNote");
+  note.textContent=S.lot&&S.shape==="custom"?`Testing lot ${S.lot.spi}${S.lot.address&&!/^Lot /.test(S.lot.address)?" · "+titleCase(S.lot.address):""}`:"Search an address or click a lot on the map.";
+}
+function titleCase(t){return String(t).toLowerCase().replace(/\b([a-z])/g,c=>c.toUpperCase()).replace(/\b(\d+)([a-z])\b/gi,(m,a,b)=>a+b.toUpperCase())}
+const SITES_KEY="bayline-sites";
+function readSites(){try{return JSON.parse(localStorage.getItem(SITES_KEY)||"[]")}catch(e){return []}}
+function loadSites(){sites=readSites().sort((a,b)=>String(b.fetched).localeCompare(String(a.fetched))).map(d=>({id:d.id,data:()=>d}));$("#lotsState").textContent=sites.length?`${sites.length} saved`:"none yet";renderSites();if(typeof drawSaved==="function")drawSaved()}
+function saveSite(doc){const all=readSites().filter(d=>d.id!==doc.id);all.push(doc);try{localStorage.setItem(SITES_KEY,JSON.stringify(all.slice(-60)))}catch(e){}loadSites()}
+function parsePaste(txt){
+  txt=txt.trim();if(!txt)return null;
+  if(txt[0]==="{"||txt[0]==="["){
+    try{
+      let g=JSON.parse(txt);
+      if(Array.isArray(g)&&typeof g[0]?.[0]==="number")return g;
+      if(g.type==="FeatureCollection")g=g.features[0];
+      if(g.type==="Feature")g=g.geometry;
+      if(g.type==="Polygon")return g.coordinates[0];
+      if(g.type==="MultiPolygon"){let best=null,ba=-1;for(const pg of g.coordinates){const a=Math.abs(area(pg[0].map(p=>({x:p[0],y:p[1]}))));if(a>ba){ba=a;best=pg[0]}}return best}
+    }catch(e){return null}
+    return null;
+  }
+  const pts=txt.split(/\n/).map(l=>l.split(/[,\s]+/).filter(Boolean).map(Number)).filter(a=>a.length>=2&&a.every(isFinite)).map(a=>[a[0],a[1]]);
+  return pts.length>=3?pts:null;
+}
+$("#pasteBtn").addEventListener("click",()=>{
+  let r=parsePaste($("#pasteBox").value);const msg=$("#pasteMsg");
+  if(!r){msg.textContent="Couldn't read that. Paste a GeoJSON polygon, or at least three lon, lat lines.";return}
+  if(Math.abs(r[0][0])<90&&Math.abs(r[0][1])>90)r=r.map(p=>[p[1],p[0]]);
+  if(Math.abs(r[0][0])>180){msg.textContent="Coordinates look projected (metres). Paste longitude/latitude degrees, or use Custom vertices for metres.";return}
+  loadLot({ring:r,front:0,address:S.address,spi:"pasted",roads:[]},"pasted");
+  msg.textContent=`Loaded ${S.custom.length} corners. Pick the street edge under Site boundary.`;
+});
+
+/* ---------- Map: MapLibre + OpenFreeMap (OpenStreetMap), lots from Vicmap ---------- */
+const WFS="https://opendata.maps.vic.gov.au/geoserver/wfs";
+const LON0=144.96,LAT0=-37.81,KX=111320*Math.cos(LAT0*D2R),KY=110574;
+const toM=(lon,lat)=>({x:(lon-LON0)*KX,y:(lat-LAT0)*KY});
+const toLL=(x,y)=>[LON0+x/KX,LAT0+y/KY];
+const LOTZ=15.4,T2={lon:0.006,lat:0.005};
+const M={parcels:new Map(),roads:new Map(),tiles:new Map(),addr:new Map(),sel:null,map:null,ready:false,hover:null,marker:null};
+async function wfs(url,signal){const r=await fetch(url,{signal});if(!r.ok)throw {code:"http",message:"Vicmap answered "+r.status};return r.json()}
+const lotURL=(ix,iy)=>`${WFS}?service=WFS&version=1.1.0&request=GetFeature&typeName=open-data-platform:v_parcel_mp,open-data-platform:tr_road&propertyName=(parcel_spi,parcel_road,geom)(road_name,road_type,class_code,geom)&outputFormat=application/json&srsName=EPSG:4326&maxFeatures=8000&bbox=${[ix*T2.lon,iy*T2.lat,(ix+1)*T2.lon,(iy+1)*T2.lat].map(v=>v.toFixed(6)).join(",")},EPSG:4326`;
+function ingest(fc){
+  for(const f of fc.features||[]){
+    const g=f.geometry;if(!g)continue;
+    const kind=String(f.id||"").split(".")[0];const p=f.properties||{};
+    if(kind==="tr_road"){
+      if(M.roads.has(f.id))continue;
+      const lines=(g.type==="LineString"?[g.coordinates]:g.type==="MultiLineString"?g.coordinates:[]).map(l=>l.map(c=>toM(c[0],c[1])));
+      M.roads.set(f.id,{name:p.road_name&&p.road_name!=="UNNAMED"?p.road_name:"",type:p.road_type||"",cls:p.class_code==null?6:+p.class_code,lines,bb:bbox(lines.flat())});
+    }else if(kind==="v_parcel_mp"){
+      const polys=g.type==="Polygon"?[g.coordinates]:g.type==="MultiPolygon"?g.coordinates:[];
+      if(!polys.length)continue;
+      const key=(p.parcel_spi||"")+"|"+polys[0][0][0].join(",");
+      if(M.parcels.has(key))continue;
+      const rings=polys.map(pg=>pg[0].map(c=>toM(c[0],c[1])));
+      M.parcels.set(key,{key,spi:p.parcel_spi||"",road:p.parcel_road==="Y",rings,ll:polys.map(pg=>pg[0]),bb:bbox(rings.flat()),area:rings.reduce((m,r)=>m+Math.abs(area(r)),0)});
+    }
+  }
+}
+function setStat(t){$("#mapStat").textContent=t;$("#mapStat").hidden=!t}
+function lotsFC(){const fs=[];for(const p of M.parcels.values()){if(p.road)continue;fs.push({type:"Feature",properties:{key:p.key},geometry:{type:"MultiPolygon",coordinates:p.ll.map(r=>[r])}})}return {type:"FeatureCollection",features:fs}}
+let lotsRaf=0;function pushLots(){cancelAnimationFrame(lotsRaf);lotsRaf=requestAnimationFrame(()=>{const s=M.map&&M.map.getSource("lots");if(s)s.setData(lotsFC())})}
+let inflight=0;const queue=[];
+function pump(){while(inflight<4&&queue.length){const job=queue.shift();inflight++;job().finally(()=>{inflight--;pump();stat()})}}
+function stat(){
+  if(!M.map)return;const z=M.map.getZoom();
+  const n=inflight+queue.length;
+  setStat(n?`Loading lots from Vicmap… ${n} area${n>1?"s":""} left`:z<LOTZ?"Zoom in to see lot boundaries":"");
+}
+let tileTmr=null;function refreshTiles(){clearTimeout(tileTmr);tileTmr=setTimeout(loadTiles,120)}
+function loadTiles(){
+  const map=M.map;if(!map)return;
+  if(map.getZoom()<LOTZ){queue.length=0;stat();return}
+  const b=map.getBounds(),w=b.getWest(),e=b.getEast(),s=b.getSouth(),n=b.getNorth();
+  const want=[];
+  for(let ix=Math.floor(w/T2.lon);ix<=Math.floor(e/T2.lon);ix++)for(let iy=Math.floor(s/T2.lat);iy<=Math.floor(n/T2.lat);iy++)want.push([ix,iy]);
+  const c=map.getCenter();want.sort((p,q)=>Math.hypot((p[0]+.5)*T2.lon-c.lng,(p[1]+.5)*T2.lat-c.lat)-Math.hypot((q[0]+.5)*T2.lon-c.lng,(q[1]+.5)*T2.lat-c.lat));
+  const keep=new Set(want.map(([x,y])=>x+","+y));
+  for(let i=queue.length-1;i>=0;i--)if(!keep.has(queue[i].k)){M.tiles.delete(queue[i].k);queue.splice(i,1)}
+  for(const [ix,iy] of want){const k=ix+","+iy;if(M.tiles.has(k))continue;M.tiles.set(k,"loading");
+    const job=()=>wfs(lotURL(ix,iy)).then(fc=>{M.tiles.set(k,"ok");ingest(fc);pushLots();afterLoad()}).catch(()=>{M.tiles.delete(k);setStat("Vicmap didn't answer for part of the map. Move the map to retry.")});
+    job.k=k;queue.push(job)}
+  pump();stat();
+}
+let pendingPick=null,pendingAddr=null;
+function afterLoad(){if(pendingPick){const p=parcelAt(pendingPick);if(p){selectParcel(p,pendingAddr);pendingPick=null}}}
+function parcelAt(pt){let best=null;for(const p of M.parcels.values()){if(pt.x<p.bb.x0||pt.x>p.bb.x1||pt.y<p.bb.y0||pt.y>p.bb.y1)continue;if(p.rings.some(r=>pip(pt,r))&&(!best||(best.road&&!p.road)||(p.road===best.road&&p.area<best.area)))best=p}return best}
+function panelPad(){return window.innerWidth>760?{top:40,bottom:40,left:392,right:60}:{top:30,bottom:30,left:30,right:30}}
+function flyToLL(lon,lat,zoom){M.map&&M.map.flyTo({center:[lon,lat],zoom,padding:panelPad(),speed:1.6})}
+function savedFC(){return {type:"FeatureCollection",features:sites.map(s=>s.data()).filter(d=>d.ring).map(d=>({type:"Feature",properties:{},geometry:{type:"Polygon",coordinates:[d.ring.concat([d.ring[0]])]}}))}}
+function drawSaved(){const s=M.map&&M.map.getSource("saved");if(s)s.setData(savedFC())}
+function drawSel(){
+  const s=M.map&&M.map.getSource("sel");if(!s)return;
+  const fs=[];const p=M.sel;
+  if(p){fs.push({type:"Feature",properties:{kind:"lot"},geometry:{type:"MultiPolygon",coordinates:p.ll.map(r=>[r])}});
+    if(p.frontWorld)fs.push({type:"Feature",properties:{kind:"front"},geometry:{type:"LineString",coordinates:p.frontWorld.map(q=>toLL(q.x,q.y))}})}
+  s.setData({type:"FeatureCollection",features:fs});
+}
+function setPin(lon,lat){if(!M.map)return;if(!M.marker){const el=document.createElement("div");el.className="pin";M.marker=new maplibregl.Marker({element:el,anchor:"bottom"})}M.marker.setLngLat([lon,lat]).addTo(M.map)}
+function clearPin(){if(M.marker)M.marker.remove()}
+
+/* map setup */
+function initMap(){
+  if(typeof maplibregl==="undefined"){$("#mapMsg").hidden=false;$("#mapMsg").innerHTML="<b>The map library didn't load</b><span>Check your internet connection and reload the page.</span>";return}
+  const map=new maplibregl.Map({container:"map",style:"https://tiles.openfreemap.org/styles/positron",center:[144.96,-37.83],zoom:window.innerWidth>760?9.4:8.6,minZoom:5,maxZoom:19.5,
+    maxBounds:[[139.5,-40.5],[151.5,-33.2]],attributionControl:false,dragRotate:false,pitchWithRotate:false});
+  map.touchZoomRotate.disableRotation();
+  map.addControl(new maplibregl.NavigationControl({showCompass:false}),"top-right");
+  map.addControl(new maplibregl.ScaleControl({unit:"metric"}),"bottom-right");
+  map.addControl(new maplibregl.AttributionControl({compact:true,customAttribution:"Lots, roads & addresses: Vicmap © State of Victoria, CC BY 4.0"}),"bottom-right");
+  M.map=map;
+  if(window.innerWidth>760)map.setPadding({left:372,top:0,right:0,bottom:0});
+  map.on("load",()=>{
+    const firstSymbol=(map.getStyle().layers.find(l=>l.type==="symbol")||{}).id;
+    const acc=css("--accent")||"#E2B007",ink="#1E292D";
+    map.addSource("lots",{type:"geojson",data:lotsFC(),promoteId:"key"});
+    map.addSource("saved",{type:"geojson",data:savedFC()});
+    map.addSource("sel",{type:"geojson",data:{type:"FeatureCollection",features:[]}});
+    map.addLayer({id:"lots-fill",type:"fill",source:"lots",minzoom:14,paint:{"fill-color":"#ffffff","fill-opacity":0.01}},firstSymbol);
+    map.addLayer({id:"lots-hover",type:"fill",source:"lots",minzoom:14,paint:{"fill-color":acc,"fill-opacity":["case",["boolean",["feature-state","hover"],false],0.22,0]}},firstSymbol);
+    map.addLayer({id:"lots-line",type:"line",source:"lots",minzoom:14,paint:{"line-color":"#8E959A","line-opacity":["interpolate",["linear"],["zoom"],14,0.2,16,0.7],"line-width":["interpolate",["linear"],["zoom"],15,0.4,18,1.1]}},firstSymbol);
+    map.addLayer({id:"saved-line",type:"line",source:"saved",paint:{"line-color":"#2C6A88","line-width":1.6,"line-dasharray":[2,1.5]}});
+    map.addLayer({id:"sel-fill",type:"fill",source:"sel",filter:["==",["get","kind"],"lot"],paint:{"fill-color":acc,"fill-opacity":0.42}});
+    map.addLayer({id:"sel-line",type:"line",source:"sel",filter:["==",["get","kind"],"lot"],paint:{"line-color":ink,"line-width":2.2}});
+    map.addLayer({id:"sel-front",type:"line",source:"sel",filter:["==",["get","kind"],"front"],layout:{"line-cap":"round"},paint:{"line-color":ink,"line-width":5}});
+    M.ready=true;drawSaved();drawSel();loadTiles();
+    if(pendingFit){const f=pendingFit;pendingFit=null;fitRing(f)}
+  });
+  map.on("moveend",refreshTiles);
+  map.on("zoomend",stat);
+  let hoverKey=null;
+  const setHover=k=>{if(hoverKey===k)return;if(hoverKey!=null)map.setFeatureState({source:"lots",id:hoverKey},{hover:false});hoverKey=k;if(k!=null)map.setFeatureState({source:"lots",id:k},{hover:true})};
+  map.on("mousemove",e=>{if(!M.ready)return;if(map.getZoom()<LOTZ){map.getCanvas().style.cursor="";setHover(null);return}
+    const f=map.queryRenderedFeatures(e.point,{layers:["lots-fill"]})[0];setHover(f?f.id:null);map.getCanvas().style.cursor=f?"pointer":""});
+  map.on("mouseout",()=>setHover(null));
+  map.on("click",e=>{
+    if(!M.ready)return;
+    if(map.getZoom()<LOTZ){map.easeTo({center:e.lngLat,zoom:Math.min(17,Math.max(LOTZ+1.2,map.getZoom()+3)),duration:700});return}
+    const pt=toM(e.lngLat.lng,e.lngLat.lat);
+    const p=parcelAt(pt);
+    if(p&&!p.road){clearPin();selectParcel(p,null)}
+  });
+}
+let pendingFit=null;
+function fitRing(ring){
+  if(!M.map||!M.ready){pendingFit=ring;return}
+  let w=999,s=999,e=-999,n=-999;for(const [x,y] of ring){w=Math.min(w,x);e=Math.max(e,x);s=Math.min(s,y);n=Math.max(n,y)}
+  M.map.fitBounds([[w,s],[e,n]],{padding:panelPad(),maxZoom:18.2,duration:900});
+}
+
+/* selection → site */
+function dpSimplify(pts,tol){
+  if(pts.length<3)return pts;const a=pts[0],b=pts.at(-1);let i=0,dm=-1;const dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy)||1e-9;
+  for(let k=1;k<pts.length-1;k++){const d=Math.abs(dy*(pts[k].x-a.x)-dx*(pts[k].y-a.y))/L;if(d>dm){dm=d;i=k}}
+  return dm>tol?dpSimplify(pts.slice(0,i+1),tol).slice(0,-1).concat(dpSimplify(pts.slice(i),tol)):[a,b];
+}
+function lotGeometry(p){
+  let ri=0,ba=-1;p.rings.forEach((r,i)=>{const a=Math.abs(area(r));if(a>ba){ba=a;ri=i}});
+  let pts=p.rings[ri].slice();if(pts.length>1&&Math.hypot(pts[0].x-pts.at(-1).x,pts[0].y-pts.at(-1).y)<0.05)pts.pop();
+  const clean=[pts[0]];for(const q of pts.slice(1))if(Math.hypot(q.x-clean.at(-1).x,q.y-clean.at(-1).y)>0.05)clean.push(q);
+  let far=0,fd=-1;clean.forEach((q,i)=>{const d=Math.hypot(q.x-clean[0].x,q.y-clean[0].y);if(d>fd){fd=d;far=i}});
+  const s=dpSimplify(clean.slice(0,far+1),0.3).slice(0,-1).concat(dpSimplify(clean.slice(far).concat([clean[0]]),0.3).slice(0,-1));
+  const sg=Math.sign(area(s))||1,roadsNear=[...M.roads.values()].filter(r=>r.name&&!/TUNNEL|FREEWAY/.test(r.name+" "+r.type)&&r.bb.x1>p.bb.x0-40&&r.bb.x0<p.bb.x1+40&&r.bb.y1>p.bb.y0-40&&r.bb.y0<p.bb.y1+40);
+  const reserves=[...M.parcels.values()].filter(q=>q.road&&q.bb.x1>p.bb.x0-5&&q.bb.x0<p.bb.x1+5&&q.bb.y1>p.bb.y0-5&&q.bb.y0<p.bb.y1+5);
+  const edges=s.map((a,i)=>{
+    const b=s[(i+1)%s.length],L=Math.hypot(b.x-a.x,b.y-a.y),m={x:(a.x+b.x)/2,y:(a.y+b.y)/2},n=inward(s,i,sg),out={x:m.x-n.x*1.5,y:m.y-n.y*1.5};
+    const onReserve=reserves.some(q=>q.rings.some(r=>pip(out,r)));
+    let name=null,type="",bd=1e9;
+    for(const rd of roadsNear)for(const ln of rd.lines)for(let j=0;j+1<ln.length;j++){
+      const u=ln[j],v=ln[j+1],dx=v.x-u.x,dy=v.y-u.y,l2=dx*dx+dy*dy||1e-9,tt=Math.max(0,Math.min(1,((m.x-u.x)*dx+(m.y-u.y)*dy)/l2));
+      const d=Math.hypot(m.x-u.x-tt*dx,m.y-u.y-tt*dy);
+      let ang=Math.abs(Math.atan2((b.y-a.y)*dx-(b.x-a.x)*dy,(b.x-a.x)*dx+(b.y-a.y)*dy))/D2R;ang=Math.min(ang,180-ang);
+      if(ang<30&&d<bd){bd=d;name=rd.name;type=rd.type}
+    }
+    const front=L>2&&(onReserve||bd<25);
+    return {i,L,front,name:front&&bd<35?(name+(type?" "+type:"")):null};
+  });
+  const cands=edges.filter(e=>e.front);
+  const fe=(cands.length?cands:edges).reduce((m,e)=>e.L>m.L?e:m);
+  return {ring:s.map(q=>toLL(q.x,q.y).map(v=>+v.toFixed(7))),front:fe.i,roads:cands.filter(e=>e.name).map(e=>({edge:e.i,road:e.name})),area:Math.abs(area(s)),frontWorld:[s[fe.i],s[(fe.i+1)%s.length]],frontLen:fe.L};
+}
+function lookupAddress(p){
+  if(M.addr.has(p.key))return Promise.resolve(M.addr.get(p.key));
+  const b=p.ll.flat().reduce((m,c)=>[Math.min(m[0],c[0]),Math.min(m[1],c[1]),Math.max(m[2],c[0]),Math.max(m[3],c[1])],[999,999,-999,-999]);
+  const pad=0.00015,bb=[b[0]-pad,b[1]-pad,b[2]+pad,b[3]+pad].map(v=>v.toFixed(6)).join(",");
+  const url=`${WFS}?service=WFS&version=2.0.0&request=GetFeature&typeNames=open-data-platform:address&count=400&outputFormat=application/json&srsName=EPSG:4326&propertyName=ezi_address,is_primary,geom&bbox=${bb},EPSG:4326`;
+  return wfs(url).then(fc=>{
+    const pts=(fc.features||[]).filter(f=>f.geometry&&f.geometry.type==="Point").map(f=>({a:f.properties.ezi_address,prim:f.properties.is_primary==="Y",pt:toM(f.geometry.coordinates[0],f.geometry.coordinates[1])}));
+    let inside=pts.filter(q=>p.rings.some(r=>pip(q.pt,r)));
+    if(!inside.length){const cx=(p.bb.x0+p.bb.x1)/2,cy=(p.bb.y0+p.bb.y1)/2;const near=pts.map(q=>({...q,d:Math.hypot(q.pt.x-cx,q.pt.y-cy)})).sort((x,y)=>x.d-y.d);if(near[0]&&near[0].d<Math.max(20,Math.hypot(p.bb.x1-p.bb.x0,p.bb.y1-p.bb.y0)/2))inside=[near[0]]}
+    const uniq=[...new Map(inside.map(q=>[q.a,q])).values()].sort((x,y)=>(y.prim-x.prim)||x.a.localeCompare(y.a,undefined,{numeric:true}));
+    const res={main:uniq[0]?uniq[0].a:null,all:uniq.map(q=>q.a)};M.addr.set(p.key,res);return res;
+  });
+}
+function selectParcel(p,addr){
+  M.sel=p;const geo=lotGeometry(p);p.geo=geo;p.frontWorld=geo.frontWorld;if(addr)p.addr=addr;
+  drawSel();
+  const body=$("#lotBody");
+  const streets=[...new Set(geo.roads.map(r=>titleCase(r.road)))];
+  body.innerHTML=`<div><div class="lotaddr-main"></div><div class="lotspi-sm"></div><div class="lotmore"></div></div>
+    <dl class="kv"><dt>Lot area</dt><dd>${Math.round(geo.area).toLocaleString()} m²</dd><dt>Street frontage</dt><dd>${geo.frontLen.toFixed(1)} m</dd><dt>Fronts</dt><dd style="font-family:var(--f-body)"></dd><dt>Corners</dt><dd>${geo.ring.length}</dd></dl>
+    <button class="btn go" id="useLot" type="button">Test-fit car park on this lot</button>
+    <p class="hint">The thick edge on the map is the street frontage. You can change it under Site boundary.</p>`;
+  const main=body.querySelector(".lotaddr-main"),more=body.querySelector(".lotmore");
+  body.querySelector(".lotspi-sm").textContent=`Lot ${p.spi||"–"} · Vicmap Property`;
+  body.querySelectorAll("dd")[2].textContent=streets.join(", ")||"Not detected";
+  const show=r=>{if(M.sel!==p)return;if(r&&r.main){p.addr=p.addr||r.main;main.textContent=titleCase(p.addr);const others=r.all.filter(a=>a!==p.addr);more.textContent=others.length?`Also: ${others.slice(0,3).map(titleCase).join("; ")}${others.length>3?` and ${others.length-3} more`:""}`:""}else{main.textContent=p.addr?titleCase(p.addr):"No street address recorded for this lot"}};
+  main.textContent=p.addr?titleCase(p.addr):"Finding address…";
+  lookupAddress(p).then(show).catch(()=>{if(M.sel===p&&!p.addr)main.textContent="Address lookup failed. Click the lot again to retry."});
+  $("#useLot").addEventListener("click",()=>useParcel(p));
+}
+function useParcel(p){
+  const g=p.geo,addr=p.addr||`Lot ${p.spi}`;
+  const id=(p.spi||"lot").replace(/[^A-Za-z0-9]+/g,"-").replace(/^-|-$/g,"")||"lot";
+  const doc={id,address:addr,spi:p.spi,source:"Vicmap Property (v_parcel_mp) + Vicmap Transport (tr_road), GDA2020",ring:g.ring,front:g.front,roads:g.roads,areaM2:Math.round(g.area*10)/10,fetched:new Date().toISOString()};
+  saveSite(doc);loadLot(doc,id,false);
+  document.querySelector(".grid").scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"start"});
+}
+
+/* address search */
+const ABBR={ST:"STREET",RD:"ROAD",AVE:"AVENUE",AV:"AVENUE",DR:"DRIVE",CT:"COURT",PL:"PLACE",CRES:"CRESCENT",CR:"CRESCENT",HWY:"HIGHWAY",PDE:"PARADE",LA:"LANE",LN:"LANE",TCE:"TERRACE",GR:"GROVE",CL:"CLOSE",BVD:"BOULEVARD",BLVD:"BOULEVARD",SQ:"SQUARE",CCT:"CIRCUIT",HTS:"HEIGHTS",ESP:"ESPLANADE"};
+function addrPattern(q){return q.toUpperCase().replace(/[,]/g," ").replace(/\bVIC(TORIA)?\b/g," ").split(/\s+/).filter(Boolean).map(t=>ABBR[t]||t).map(t=>t.replace(/'/g,"''")).join("%")}
+$("#searchForm").addEventListener("submit",async e=>{
+  e.preventDefault();const q=$("#address").value.trim();const ul=$("#results");
+  if(q.length<4){ul.hidden=false;ul.innerHTML=`<li class="msg">Type a street address, e.g. 133 Whitehall Street Footscray.</li>`;return}
+  ul.hidden=false;ul.innerHTML=`<li class="msg">Searching Vicmap…</li>`;
+  const pat=addrPattern(q);const num=/^\d/.test(pat);
+  const cql=num?`ezi_address ILIKE '${pat}%' OR ezi_address ILIKE '%/${pat}%'`:`ezi_address ILIKE '%${pat}%'`;
+  const url=`${WFS}?service=WFS&version=2.0.0&request=GetFeature&typeNames=open-data-platform:address&count=12&outputFormat=application/json&srsName=EPSG:4326&propertyName=ezi_address,geom&CQL_FILTER=${encodeURIComponent(cql)}`;
+  try{
+    const fc=await wfs(url);
+    const fs=(fc.features||[]).filter(f=>f.geometry);
+    if(!fs.length){ul.innerHTML=`<li class="msg">No Vicmap address matches. Try number, street and suburb, e.g. 12 Smith Street Collingwood.</li>`;return}
+    ul.innerHTML="";
+    for(const f of fs){const li=document.createElement("li");const b=document.createElement("button");b.type="button";b.textContent=titleCase(f.properties.ezi_address);
+      b.addEventListener("click",()=>{ul.hidden=true;const [lon,lat]=f.geometry.coordinates;const pt=toM(lon,lat);$("#address").value=titleCase(f.properties.ezi_address);
+        setPin(lon,lat);pendingPick=pt;pendingAddr=f.properties.ezi_address;flyToLL(lon,lat,17.6);const h=parcelAt(pt);if(h){selectParcel(h,pendingAddr);pendingPick=null}});
+      li.appendChild(b);ul.appendChild(li)}
+  }catch(err){ul.innerHTML=`<li class="msg">Vicmap didn't answer. Try again in a moment.</li>`}
+});
+document.addEventListener("click",e=>{if(!e.target.closest(".search"))$("#results").hidden=true});
+
+/* ---------- Boot ---------- */
+const hadSaved=(()=>{try{return !!localStorage.getItem(KEY)}catch(e){return false}})();
+bind();renderDims();renderFront();renderSpecs();loadSites();initMap();
+ctxNow=buildCtx();renderSelected();recompute();
+let rz=null;new ResizeObserver(()=>{clearTimeout(rz);rz=setTimeout(()=>{renderSelected();renderOptions()},80)}).observe($("#plan"));
+const reTheme=()=>{hatchCache={};renderSelected();renderOptions()};
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change",reTheme);
+new MutationObserver(reTheme).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+})();
+</script>
+</body>
+</html>
