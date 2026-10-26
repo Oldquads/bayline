@@ -231,7 +231,7 @@ details.paste[open]{display:flex;flex-direction:column;gap:8px}
         </div>
         <div class="row">
           <div class="fld"><label class="cap" for="front">Street frontage</label><select id="front"></select></div>
-          <div class="fld"><label class="cap" for="entry">Crossover position <span id="entryV"></span></label><input id="entry" type="range" min="0.05" max="0.95" step="0.01"></div>
+          <div class="fld"><label class="cap" for="entry">Crossover position <span id="entryV"></span></label><input id="entry" type="range" min="0.05" max="0.95" step="0.01"><label class="chk"><input type="checkbox" id="entryAuto"> Find best position</label></div>
         </div>
         <div class="row">
           <div class="fld"><label class="cap" for="setF">Front setback m</label><input id="setF" type="number" step="0.1" min="0"></div>
@@ -331,13 +331,14 @@ function stdSpecs(key){
 const DEF={
   address:"",shape:"rect",
   dims:{rect:{F:40,D:55},trap:{F:42,D:60,R:30,O:6},splay:{F:45,D:50,C:8},L:{F:48,D:60,NW:20,ND:24}},
-  custom:null,front:0,entry:0.3,setF:3,setO:0,
+  custom:null,front:0,entry:0.3,entryAuto:true,setF:3,setO:0,
   std:"vic26",specs:stdSpecs("vic26"),spineW:6.4,drvW:6.1,acc:2,blind:true,wall:true,sweep:true
 };
 const KEY="bayline-v1";
 function load(){try{const r=localStorage.getItem(KEY);if(!r)return null;const o=JSON.parse(r);return {...structuredClone(DEF),...o,dims:{...structuredClone(DEF.dims),...(o.dims||{})}}}catch(e){return null}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 let S=load()||structuredClone(DEF);
+if(S.entryAuto===undefined)S.entryAuto=true;
 
 /* ---------- Geometry ---------- */
 const sub=(a,b)=>({x:a.x-b.x,y:a.y-b.y}), add=(a,b)=>({x:a.x+b.x,y:a.y+b.y}), mul=(a,k)=>({x:a.x*k,y:a.y*k});
@@ -415,15 +416,16 @@ function shapeFor(t,spec,s,d){
   return {rel,stride:spec.W/sn,depth:spec.L*sn+spec.W*c,minU:Math.min(...xs),maxU:Math.max(...xs),lat:b};
 }
 
-function buildCtx(){
+function buildCtx(entry){
+  if(entry==null)entry=S.entry;
   const site=sitePoly(),n=site.length,fe=Math.min(S.front,n-1);
   const ds=site.map((_,i)=>i===fe?S.setF:S.setO);
   const usable=inset(site,ds);
   const sg=Math.sign(area(site))||1;
   const A=site[fe],B=site[(fe+1)%n];
-  const E=add(A,mul(sub(B,A),S.entry));
+  const E=add(A,mul(sub(B,A),entry));
   const nW=inward(site,fe,sg);
-  return {site,usable,E,nW,fe,frontDir:Math.atan2(B.y-A.y,B.x-A.x),siteArea:Math.abs(area(site))};
+  return {entry,site,usable,E,nW,fe,frontDir:Math.atan2(B.y-A.y,B.x-A.x),siteArea:Math.abs(area(site))};
 }
 
 function frameCache(ctx,alpha){
@@ -602,7 +604,7 @@ function describe(r,ctx){
   const m={entry:"central accessway",left:"accessway at one side",right:"accessway at far side",loop:"one-way loop",spineOnly:"single accessway"}[r.mode]+(r.infill?` + ${r.infill.bays} infill`:"");
   return {angle,orient,m};
 }
-function keyOf(r){return `${r.t}|${r.mode}|${Math.round(r.alpha/D2R)}|${r.phase.toFixed(2)}`}
+function keyOf(r){return `${r.t}|${r.mode}|${Math.round(r.alpha/D2R)}|${r.phase.toFixed(3)}|${r.ctx?r.ctx.entry.toFixed(2):""}`}
 
 /* Row grid offsets to try. Besides six evenly spaced offsets, start the
    bank|aisle|bank module exactly on every straight boundary that runs along
@@ -633,14 +635,17 @@ function recompute(){
   // grid square to every long boundary, so rows can run flush along it
   {const P=ctx.usable;for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length];if(Math.hypot(b.x-a.x,b.y-a.y)>=8){const d=Math.atan2(b.y-a.y,b.x-a.x);addA(d);addA(d+90*D2R)}}}
   if(S.sweep)for(let k=0;k<12;k++)addA(base+k*15*D2R);
+  // crossover: try several points along the street edge unless the user fixed one
+  const entries=S.entryAuto?[0.05,0.2,0.35,0.5,0.65,0.8,0.95]:[S.entry];
+  const ctxs=entries.map(e=>buildCtx(e));
   const jobs=[];
   for(const a of alphas){
     const fc0=frameCache(ctx,a*D2R);
     for(const t of types){
       const modes=t==="p90"?["entry","left","right","loop","spineOnly"]:["loop"];
       const phs=rowPhases(fc0,t);
-      for(const m of modes){
-        for(const ph of (m==="spineOnly"?[0]:phs))jobs.push([a*D2R,t,ph,m]);
+      for(let ci=0;ci<ctxs.length;ci++)for(const m of modes){
+        for(const ph of (m==="spineOnly"?[0]:phs))jobs.push([a*D2R,t,ph,m,ci]);
       }
     }
   }
@@ -651,9 +656,9 @@ function recompute(){
     if(my!==gen)return;
     const t0=performance.now();
     while(i<jobs.length&&performance.now()-t0<14){
-      const [a,t,ph,m]=jobs[i++];
-      let fc=caches.get(a);if(!fc){fc=frameCache(ctx,a);caches.set(a,fc)}
-      try{const r=runLayout(ctx,fc,t,ph,m);if(r)found.push(r)}catch(e){}
+      const [a,t,ph,m,ci]=jobs[i++];const cx=ctxs[ci],ck=ci+"|"+a;
+      let fc=caches.get(ck);if(!fc){fc=frameCache(cx,a);caches.set(ck,fc)}
+      try{const r=runLayout(cx,fc,t,ph,m);if(r){r.ctx=cx;found.push(r)}}catch(e){}
     }
     if(i<jobs.length){$("#status").textContent=`testing ${i} / ${jobs.length}…`;setTimeout(step,0);return}
     finish(found,jobs.length,ctx);
@@ -744,7 +749,7 @@ function infill(r,ctx){
 function finish(found,n,ctx){
   found.sort((a,b)=>b.total-a.total||b.acc-a.acc||a.circA-b.circA);
   // fill leftover space on the strongest candidates, then rank again
-  {const t0=performance.now();for(const r of found.slice(0,18)){try{infill(r,ctx)}catch(e){}}window.__infillMs=Math.round(performance.now()-t0);}
+  {const t0=performance.now();for(const r of found.slice(0,18)){try{infill(r,r.ctx||ctx)}catch(e){}}window.__infillMs=Math.round(performance.now()-t0);}
   found.sort((a,b)=>b.total-a.total||b.acc-a.acc||a.circA-b.circA);
   const seen=new Set(),out=[];
   for(const r of found){
@@ -778,7 +783,7 @@ function draw(cv,ctx,r,opt){
   g.setTransform(T.dpr,0,0,T.dpr,0,0);
   g.fillStyle=c.bg;g.fillRect(0,0,T.W,T.H);
   // site
-  poly(g,T,ctx.site);g.fillStyle=c.sunk;g.fill();
+  poly(g,T,ctx.site);g.fillStyle=c.bg;g.fill();
   if(r){
     g.fillStyle=c.aisle;
     for(const a of r.aisles){poly(g,T,a.pts);g.fill()}
@@ -884,13 +889,14 @@ function renderOptions(){
     b.innerHTML=`<canvas></canvas><div class="meta"><span class="rank">Option ${i+1}</span><b>${r.total}<small>bays</small></b><span>${d.angle} · ${d.m}</span><span>${d.orient}</span></div>`;
     b.addEventListener("click",()=>{selKey=keyOf(r);renderOptions();renderSelected()});
     g.appendChild(b);
-    requestAnimationFrame(()=>draw(b.querySelector("canvas"),ctxNow,r,{pad:8,small:true}));
+    requestAnimationFrame(()=>draw(b.querySelector("canvas"),r.ctx||ctxNow,r,{pad:8,small:true}));
   });
 }
 function cur(){return results.find(r=>keyOf(r)===selKey)||null}
 function renderSelected(){
   if(!ctxNow)return;
-  const r=cur(),ctx=ctxNow;
+  const r=cur(),ctx=(r&&r.ctx)||ctxNow;
+  if(r&&S.entryAuto&&r.ctx){$("#entry").value=r.ctx.entry;$("#entryV").textContent="auto · "+Math.round(r.ctx.entry*100)+"%"}
   draw($("#plan"),ctx,r,{pad:34,edit:editing});
   const addr=S.address.trim();
   $("#planTitle").textContent=(addr||"Example site")+(r?` · Option ${results.indexOf(r)+1}`:"");
@@ -906,6 +912,7 @@ function renderSelected(){
       <dt>Accessible</dt><dd>${r.acc}</dd>
       <dt>Site per bay</dt><dd>${(ctx.siteArea/r.total).toFixed(1)} m²</dd>
       <dt>Aisles &amp; accessway</dt><dd>${Math.round(r.circA)} m²</dd>
+      <dt>Crossover</dt><dd>${Math.round(ctx.entry*100)}% along street${S.entryAuto?" (auto)":""}</dd>
       <dt>Crossover to aisle</dt><dd>${r.stubLen.toFixed(1)} m</dd>
       <dt>Circulation</dt><dd style="font-family:var(--f-body)">${d.m}</dd>
       <dt>Grid</dt><dd style="font-family:var(--f-body)">${d.orient}</dd>
@@ -958,8 +965,11 @@ function bind(){
     if(pts.length>=3){S.custom=pts;renderFront();schedule()}
   });
   $("#front").addEventListener("change",e=>{S.front=+e.target.value;schedule()});
-  const en=$("#entry");en.value=S.entry;$("#entryV").textContent=Math.round(S.entry*100)+"%";
-  en.addEventListener("input",()=>{S.entry=+en.value;$("#entryV").textContent=Math.round(S.entry*100)+"%";schedule()});
+  const en=$("#entry"),ea=$("#entryAuto");
+  const showEntry=()=>{ea.checked=!!S.entryAuto;$("#entryV").textContent=S.entryAuto?"auto":Math.round(S.entry*100)+"%";en.value=S.entry};
+  window.__showEntry=showEntry;showEntry();
+  en.addEventListener("input",()=>{S.entry=+en.value;S.entryAuto=false;showEntry();schedule()});
+  ea.addEventListener("change",()=>{S.entryAuto=ea.checked;showEntry();schedule()});
   const num=(id,key,min)=>{const el=$(id);el.value=S[key];el.addEventListener("input",()=>{const v=parseFloat(el.value);if(isFinite(v)&&v>=min){S[key]=v;schedule()}})};
   num("#setF","setF",0);num("#setO","setO",0);num("#spineW","spineW",3);num("#drvW","drvW",3);num("#acc","acc",0);
   const tog=(id,key)=>{const el=$(id);el.checked=S[key];el.addEventListener("change",()=>{S[key]=el.checked;schedule()})};
@@ -1025,7 +1035,7 @@ function projectRing(ring){
 }
 function loadLot(doc,id,fly=true){
   const pts=projectRing(doc.ring);if(pts.length<3)return;
-  S.custom=pts;S.shape="custom";S.front=Math.min(doc.front||0,pts.length-1);
+  S.custom=pts;S.shape="custom";S.front=Math.min(doc.front||0,pts.length-1);S.entryAuto=true;if(window.__showEntry)window.__showEntry();
   S.address=doc.address||"";S.lot={id,spi:doc.spi||"",roads:doc.roads||[],address:doc.address||""};
   $("#shape").value="custom";$("#address").value=S.address;
   renderDims();renderFront();renderSites();schedule();
