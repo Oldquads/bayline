@@ -604,6 +604,24 @@ function describe(r,ctx){
 }
 function keyOf(r){return `${r.t}|${r.mode}|${Math.round(r.alpha/D2R)}|${r.phase.toFixed(2)}`}
 
+/* Row grid offsets to try. Besides six evenly spaced offsets, start the
+   bank|aisle|bank module exactly on every straight boundary that runs along
+   the aisles, so the outer bays sit flush against it and no strip is lost. */
+function rowPhases(fc,t){
+  const spec=S.specs[t],Dp=shapeFor(t,spec,1,1).depth,M=2*Dp+spec.A;
+  const out=[0,1/6,2/6,3/6,4/6,5/6];
+  const Q=fc.Q,y0=fc.bb.y0;
+  for(let i=0;i<Q.length;i++){
+    const a=Q[i],b=Q[(i+1)%Q.length],L=Math.hypot(b.x-a.x,b.y-a.y);
+    if(L<4||Math.abs(b.y-a.y)/L>0.02)continue;      // only boundaries parallel to the aisles
+    const v=(a.y+b.y)/2;
+    for(const off of [0,0.04,-0.04]){                 // tiny nudge absorbs rounding at the wall
+      const f=((((v+off)-y0)/M)%1+1)%1;
+      if(!out.some(x=>Math.abs(x-f)<0.004||Math.abs(x-f)>0.996))out.push(f);
+    }
+  }
+  return out;
+}
 function recompute(){
   const my=++gen;
   ctxNow=buildCtx();
@@ -612,14 +630,17 @@ function recompute(){
   const alphas=new Set();const base=ctx.frontDir;
   const addA=a=>{let d=((a/D2R)%180+180)%180;alphas.add(Math.round(d*100)/100)};
   addA(base);addA(base+90*D2R);
+  // grid square to every long boundary, so rows can run flush along it
+  {const P=ctx.usable;for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length];if(Math.hypot(b.x-a.x,b.y-a.y)>=8){const d=Math.atan2(b.y-a.y,b.x-a.x);addA(d);addA(d+90*D2R)}}}
   if(S.sweep)for(let k=0;k<12;k++)addA(base+k*15*D2R);
   const jobs=[];
   for(const a of alphas){
+    const fc0=frameCache(ctx,a*D2R);
     for(const t of types){
       const modes=t==="p90"?["entry","left","right","loop","spineOnly"]:["loop"];
+      const phs=rowPhases(fc0,t);
       for(const m of modes){
-        const phs=m==="spineOnly"?[0]:[0,1/6,2/6,3/6,4/6,5/6];
-        for(const ph of phs)jobs.push([a*D2R,t,ph,m]);
+        for(const ph of (m==="spineOnly"?[0]:phs))jobs.push([a*D2R,t,ph,m]);
       }
     }
   }
