@@ -1,6 +1,6 @@
 # Layout benchmark
 
-`lots.json` holds 20 real lots (Vicmap Property, simplified to 0.3 m, local metres) from Footscray, Richmond, Dandenong, Box Hill, Preston, Port Melbourne, Ringwood and the CBD, each with its street edge.
+`lots.json` holds 21 real lots (20 sampled + 617 Chapel St, South Yarra, added 26 Oct) (Vicmap Property, simplified to 0.3 m, local metres) from Footscray, Richmond, Dandenong, Box Hill, Preston, Port Melbourne, Ringwood and the CBD, each with its street edge.
 
 `python3 bench/bench.py index.html <tag>` loads each lot into the page with Clause 52.06 defaults (2.6 x 4.9 m bays, 6.4 m aisle, 0 m setbacks, automatic crossover) and prints the best bay count, site area per bay, a packing ratio against area / 21.06 m2, bays removed by the rule checker, and run time. Needs Python Playwright with Chromium.
 
@@ -12,3 +12,5 @@ Results on 26 Oct 2026 (before the review -> after):
 Clause 52.06 Table 2 pairs in the main grid (26 Oct 2026, second change): total 3,091 -> 3,120 bays. 272-282 Queen St 37 -> 40, Port Melbourne 9\PS537520 48 -> 56, Port Melbourne 11\PS523474 221 -> 239. The extra stage adds 0.3-2.5 s after the first results show.
 
 End-pocket infill (bays facing straight onto the end of an aisle or accessway): 3,120 -> 3,174 bays, 17 of 20 lots gain, none lose, no bays removed by the checker. 272-282 Queen St 40 -> 44.
+
+Weak-aisle removal (drop an aisle under 12 m long or serving 6 bays or fewer when lining the main accessway instead gives more bays): original 20 lots 3,174 -> 3,227; 11 lots gain, none lose, no bays removed by the checker. 617 Chapel St South Yarra: 189 -> 193 best (rows-square-to-street layout 187 -> 192).

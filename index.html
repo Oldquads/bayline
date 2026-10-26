@@ -527,9 +527,11 @@ function layoutCore(fc,t,phase,mode,uEraw,specO){
     if(!sg.attLo)sg.lo=Math.max(sg.lo,Math.min(...us)-ext);
     if(!sg.attHi)sg.hi=Math.min(sg.hi,Math.max(...us)+ext);
   }
-  if(p90){
-    const segF=keep.map(sg=>{const r=rect(sg.lo,sg.hi,sg.v0,sg.v1);return {p:r,b:bbox(r)}});
-    const bayF=bays.map(b=>({p:b.pts,b:bbox(b.pts)}));
+  // bays lining the main accessway
+  const spineBays=(segList,baseBays)=>{
+    const out=[];if(!p90)return out;
+    const segF=segList.map(sg=>{const r=rect(sg.lo,sg.hi,sg.v0,sg.v1);return {p:r,b:bbox(r)}});
+    const bayF=baseBays.map(b=>({p:b.pts,b:bbox(b.pts)}));
     for(const sp of spines){
       for(const side of [-1,1]){
         const rid=rowId++;
@@ -538,11 +540,24 @@ function layoutCore(fc,t,phase,mode,uEraw,specO){
         for(let k=0;;k++){
           const v=vs0+k*p90.W;if(v+p90.W>vs1+1e-6)break;
           const pts=rect(u0,u1,v,v+p90.W);
-          if(valid(pts,{x:0,y:1},[...segF,...bayF])){bays.push({pts,t:"p90",row:rid,i:k,sp,W:p90.W,L:p90.L});bayF.push({p:pts,b:bbox(pts)})}
+          if(valid(pts,{x:0,y:1},[...segF,...bayF])){out.push({pts,t:"p90",row:rid,i:k,sp,W:p90.W,L:p90.L});bayF.push({p:pts,b:bbox(pts)})}
         }
       }
     }
+    return out;
+  };
+  let keepF=keep.slice(),rowBays=bays.slice(),spB=spineBays(keepF,rowBays);
+  // Weak aisles (short, or serving few bays) can cost more bays than they serve,
+  // e.g. stubs that cut through bays lining the accessway. Drop one at a time,
+  // weakest first, whenever lining the accessway instead gives more bays.
+  if(p90&&spines.length){
+    const weak=keepF.filter(sg=>sg.hi-sg.lo<12||sg.bays<=6).sort((x,y)=>x.bays-y.bays).slice(0,8);
+    for(const sg of weak){
+      const k2=keepF.filter(x=>x!==sg),rb2=rowBays.filter(q=>q.seg!==sg),sp2=spineBays(k2,rb2);
+      if(rb2.length+sp2.length>rowBays.length+spB.length){keepF=k2;rowBays=rb2;spB=sp2}
+    }
   }
+  {const kf=keepF.slice(),all=[...rowBays,...spB];keep.length=0;keep.push(...kf);bays.length=0;bays.push(...all);}
   if(!bays.length)return null;
   // the accessway keeps its full length here; attachCrossover trims it
   return {t,mode,phase,alpha:fc.alpha,spines,keep,bays,ext,spec};
