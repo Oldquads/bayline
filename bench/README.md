@@ -10,3 +10,5 @@ Results on 26 Oct 2026 (before the review -> after):
 - search time for all 20 lots: 38.5 s -> 22.8 s before zoned layouts (zoned stage adds up to ~3 s on lots with an inside corner, after the first results show)
 
 Clause 52.06 Table 2 pairs in the main grid (26 Oct 2026, second change): total 3,091 -> 3,120 bays. 272-282 Queen St 37 -> 40, Port Melbourne 9\PS537520 48 -> 56, Port Melbourne 11\PS523474 221 -> 239. The extra stage adds 0.3-2.5 s after the first results show.
+
+End-pocket infill (bays facing straight onto the end of an aisle or accessway): 3,120 -> 3,174 bays, 17 of 20 lots gain, none lose, no bays removed by the checker. 272-282 Queen St 40 -> 44.

@@ -869,6 +869,8 @@ function infill(r,ctx){
       for(const e of E){
         const isEnd=e.len<=width+1e-6;
         if(isEnd){
+          // 0. bays facing straight onto the end of an aisle or accessway (corner pockets)
+          for(const c of combos)consider({bays:bank(e.a,e.t,e.n,e.len,c.W,c.L),W:c.W,L:c.L,A:c.A,kind:"end"});
           // 1. carry the aisle on, flush to either side, at each Table 2 width that fits
           for(const c of combos){if(c.A>e.len+1e-6)continue;
             for(const flip of [0,1]){
@@ -905,7 +907,7 @@ function infill(r,ctx){
     if(best.aisle){const c=centroid(best.aisle);r.aisles.push({pts:best.aisle,dir:0,a:c,b:c,infill:true});occ.push({p:best.aisle,b:bbox(best.aisle)});added.aisles++;r.circA+=Math.abs(area(best.aisle))}
     for(const p of best.bays){r.bays.push({pts:p,kind:"std",t:best.kind==="par"?"par":"p90",W:best.W,L:best.L,infill:true});occ.push({p,b:bbox(p)})}
     added.bays+=best.bays.length;if(best.kind==="par")added.par+=best.bays.length;
-    if(Math.abs(best.A-S.specs.p90.A)>1e-6&&best.kind!=="par")added.narrow.add(`${best.W.toFixed(1)} × ${best.L} m bays on a ${best.A} m aisle`);
+    if(Math.abs(best.A-S.specs.p90.A)>1e-6&&best.kind!=="par"&&best.kind!=="end")added.narrow.add(`${best.W.toFixed(1)} × ${best.L} m bays on a ${best.A} m aisle`);
   }
   if(added.bays){r.total+=added.bays;r.infill={bays:added.bays,aisles:added.aisles,narrow:[...added.narrow],par:added.par}}
   return r;
