@@ -361,6 +361,9 @@ function segX(p1,p2,p3,p4){const d1=cross(sub(p4,p3),sub(p1,p3)),d2=cross(sub(p4
 function inside(R,Q){
   for(const p of R)if(!pip(p,Q))return false;
   for(let i=0;i<R.length;i++){const a=R[i],b=R[(i+1)%R.length];for(let j=0;j<Q.length;j++)if(segX(a,b,Q[j],Q[(j+1)%Q.length]))return false}
+  // a lot corner poking into the bay (touching an edge rather than crossing it) also fails
+  const c=centroid(R),Rs=R.map(q=>({x:c.x+(q.x-c.x)*0.999,y:c.y+(q.y-c.y)*0.999}));
+  for(const q of Q)if(pip(q,Rs))return false;
   return true;
 }
 function bbox(P){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const p of P){if(p.x<x0)x0=p.x;if(p.y<y0)y0=p.y;if(p.x>x1)x1=p.x;if(p.y>y1)y1=p.y}return {x0,y0,x1,y1}}
@@ -439,17 +442,22 @@ function frameCache(ctx,alpha){
   return {alpha,toF,toW,Q,Qs,siteF,bb,E:toF(ctx.E),nF};
 }
 
-function runLayout(ctx,fc,t,phase,mode){
+/* Layout in two parts. layoutCore() builds the aisle grid, rows, main
+   accessway and its bays for one grid angle, row offset and accessway mode;
+   it does not depend on the crossover (except "entry" modes, which put the
+   accessway in line with it). attachCrossover() then runs the driveway from a
+   crossover point to the nearest circulation, removes only the bays it
+   crosses, places accessible bays and totals the result. One core is tried
+   against every crossover point. */
+function layoutCore(fc,t,phase,mode,uEraw){
   const spec=S.specs[t],ext=S.blind?1.0:0,Ac=S.spineW,clr=S.wall?0.3:0;
-  const {Q,Qs,bb,E,nF,siteF}=fc;
+  const {Q,Qs,bb}=fc;
   const p90=S.specs.p90.on?S.specs.p90:null;
-  // 1. spines
   let centers;
   const lo=bb.x0+Ac/2,hi=bb.x1-Ac/2;
   if(hi<lo)return null;
   const bestNear=(start,dir)=>{let best=start,bl=-1;for(let k=0;k<=8;k++){const uc=start+dir*k;if(uc<lo-1e-6||uc>hi+1e-6)break;const iv=stripInts(Qs,uc-Ac/2,uc+Ac/2);const l=iv.reduce((m,x)=>Math.max(m,x[1]-x[0]),0);if(l>bl+0.5){bl=l;best=uc}}return best};
-  const uE=Math.min(hi,Math.max(lo,E.x));
-  if(mode==="entry"||mode==="spineOnly")centers=[uE];
+  if(mode==="entry"||mode==="spineOnly")centers=[Math.min(hi,Math.max(lo,uEraw))];
   else if(mode==="left")centers=[bestNear(lo,1)];
   else if(mode==="right")centers=[bestNear(hi,-1)];
   else centers=[bestNear(lo,1),bestNear(hi,-1)];
@@ -460,7 +468,6 @@ function runLayout(ctx,fc,t,phase,mode){
     let best=iv[0];for(const x of iv)if(x[1]-x[0]>best[1]-best[0])best=x;
     spines.push({u0:uc-Ac/2,u1:uc+Ac/2,v0:best[0],v1:best[1]});
   }
-  // 2. modules & aisle segments
   const segs=[];
   if(mode!=="spineOnly"){
     const sTop=shapeFor(t,spec,1,1),Dp=sTop.depth,A=spec.A,M=2*Dp+A;
@@ -483,25 +490,11 @@ function runLayout(ctx,fc,t,phase,mode){
       }
     }
   }
-  // 3. crossover stub (from street to first accessway it meets)
-  const circ=[...spines.map(sp=>({r:rect(sp.u0,sp.u1,sp.v0,sp.v1),sp})),...segs.map(sg=>({r:rect(sg.lo,sg.hi,sg.v0,sg.v1),sg}))];
-  let hit=null,hitT=0;
-  for(let tt=0;tt<=40;tt+=0.2){
-    const P=add(E,mul(nF,tt));
-    if(tt>0.4&&!pip(P,siteF))break;
-    const h=circ.find(c=>inRect(P,c.r));if(h){hit=h;hitT=tt;break}
-  }
-  if(!hit)return null;
-  const tF={x:-nF.y,y:nF.x},w2=S.drvW/2,sl=hitT+0.6;
-  const stub=[add(E,mul(tF,-w2)),add(E,mul(tF,w2)),add(add(E,mul(tF,w2)),mul(nF,sl)),add(add(E,mul(tF,-w2)),mul(nF,sl))];
-  const stubBB=bbox(stub);
-  if(hit.sg)hit.sg.stubTarget=true;
-  const forb=[{p:stub,b:stubBB},...spines.map(sp=>{const r=rect(sp.u0,sp.u1,sp.v0,sp.v1);return {p:r,b:bbox(r)}})];
-  // 4. bays
+  const forb=spines.map(sp=>{const r=rect(sp.u0,sp.u1,sp.v0,sp.v1);return {p:r,b:bbox(r)}});
   const bays=[];let rowId=0;
   const valid=(pts,lat,extra)=>{
     let test=pts;
-    if(clr&&lat){const e=mul(lat,clr);test=[sub(pts[0],e),add(pts[1],e),add(pts[2],e),sub(pts[3],e)]}
+    if(clr&&lat){const e=mul(lat,clr),c=centroid(pts);test=pts.map(q=>((q.x-c.x)*lat.x+(q.y-c.y)*lat.y)>=0?add(q,e):sub(q,e))}
     if(!inside(test,Q))return false;
     const b=bbox(pts);
     for(const f of forb)if(bbHit(b,f.b)&&sat(pts,f.p))return false;
@@ -516,28 +509,22 @@ function runLayout(ctx,fc,t,phase,mode){
       const l=sg.lo+(sg.attLo?0:ext),h=sg.hi-(sg.attHi?0:ext);
       const span=sh.maxU-sh.minU;if(h-l<span)continue;
       const fromHi=sg.attHi&&!sg.attLo;
-      const rid=rowId++;let i=0;
+      const rid=rowId++;
       for(let k=0;;k++){
         let ox;
         if(fromHi){const top=h-k*sh.stride;if(top-span<l-1e-6)break;ox=top-sh.maxU}
         else{const st=l+k*sh.stride;if(st+span>h+1e-6)break;ox=st-sh.minU}
         const pts=sh.rel.map(c=>({x:c.x+ox,y:c.y+vE}));
         if(valid(pts,sh.lat)){bays.push({pts,t,row:rid,i:k,seg:sg});sg.bays++;}
-        i++;
       }
     }
   }
-  // keep aisles that serve bays or carry the crossover; trim free ends
-  const keep=segs.filter(sg=>sg.bays>0||sg.stubTarget);
+  const keep=segs.filter(sg=>sg.bays>0);
   for(const sg of keep){
-    const own=bays.filter(b=>b.seg===sg);
-    if(own.length){
-      const us=own.flatMap(b=>b.pts.map(p=>p.x));
-      if(!sg.attLo)sg.lo=Math.max(sg.lo,Math.min(...us)-ext);
-      if(!sg.attHi)sg.hi=Math.min(sg.hi,Math.max(...us)+ext);
-    }
+    const us=bays.filter(b=>b.seg===sg).flatMap(b=>b.pts.map(p=>p.x));
+    if(!sg.attLo)sg.lo=Math.max(sg.lo,Math.min(...us)-ext);
+    if(!sg.attHi)sg.hi=Math.min(sg.hi,Math.max(...us)+ext);
   }
-  // 5. bays along the main accessway (90° spec)
   if(p90){
     const segF=keep.map(sg=>{const r=rect(sg.lo,sg.hi,sg.v0,sg.v1);return {p:r,b:bbox(r)}});
     const bayF=bays.map(b=>({p:b.pts,b:bbox(b.pts)}));
@@ -555,40 +542,63 @@ function runLayout(ctx,fc,t,phase,mode){
     }
   }
   if(!bays.length)return null;
-  // trim spines to what they serve
-  const hitP=add(E,mul(nF,hitT));
-  for(const sp of spines){
-    let v0=1e9,v1=-1e9;
-    const inc=(a,b)=>{v0=Math.min(v0,a);v1=Math.max(v1,b)};
+  // the accessway keeps its full length here; attachCrossover trims it
+  return {t,mode,phase,alpha:fc.alpha,spines,keep,bays,ext};
+}
+function attachCrossover(core,fc,ctx){
+  const {E,nF,siteF}=fc,{spines,keep,ext}=core;
+  // circulation the driveway may join: aisles as built, accessways trimmed to what they serve
+  const spv=spines.map(sp=>{
+    let v0=1e9,v1=-1e9;const inc=(a,b)=>{v0=Math.min(v0,a);v1=Math.max(v1,b)};
     for(const sg of keep)if(sg.lo<=sp.u1+1e-6&&sg.hi>=sp.u0-1e-6)inc(sg.v0,sg.v1);
-    for(const b of bays)if(b.sp===sp){const bb2=bbox(b.pts);inc(bb2.y0-ext,bb2.y1+ext)}
-    if(hit.sp===sp){const half=Math.abs(nF.x)>0.5?w2:0;inc(hitP.y-half,hitP.y+half)}
-    else if(spines.length===1){/* stub meets an aisle */}
-    if(v0<v1){sp.v0=Math.max(sp.v0,v0);sp.v1=Math.min(sp.v1,v1)}
-    sp.used=v0<v1;
+    for(const b of core.bays)if(b.sp===sp){const bb2=bbox(b.pts);inc(bb2.y0-ext,bb2.y1+ext)}
+    return {sp,v0,v1};
+  });
+  const circ=[...spv.map(s=>({r:rect(s.sp.u0,s.sp.u1,Math.min(s.v0,s.v1>s.v0?s.v0:s.sp.v0),s.v1>s.v0?s.v1:s.sp.v1),s,full:rect(s.sp.u0,s.sp.u1,s.sp.v0,s.sp.v1)})),...keep.map(sg=>({r:rect(sg.lo,sg.hi,sg.v0,sg.v1),sg}))];
+  // walk in from the crossover until the driveway meets circulation (a full-length accessway counts)
+  let hit=null,hitT=0;
+  for(let tt=0;tt<=60;tt+=0.2){
+    const P=add(E,mul(nF,tt));
+    if(tt>0.4&&!pip(P,siteF))break;
+    const h=circ.find(c=>inRect(P,c.r)||(c.full&&inRect(P,c.full)));if(h){hit=h;hitT=tt;break}
   }
-  // 6. accessible bays (AS/NZS 2890.6: bay + shared zone alongside)
-  const eW={x:E.x,y:E.y};
+  if(!hit)return null;
+  const tF={x:-nF.y,y:nF.x},w2=S.drvW/2,sl=hitT+0.6;
+  const stub=[add(E,mul(tF,-w2)),add(E,mul(tF,w2)),add(add(E,mul(tF,w2)),mul(nF,sl)),add(add(E,mul(tF,-w2)),mul(nF,sl))];
+  const sb=bbox(stub);
+  const hitP=add(E,mul(nF,hitT));
+  // final accessway extents, including the point where the driveway joins
+  const usedSp=[];
+  for(const s of spv){
+    let v0=s.v0,v1=s.v1;
+    if(hit.s===s){const half=Math.abs(nF.x)>0.5?w2:0;v0=Math.min(v0,hitP.y-half);v1=Math.max(v1,hitP.y+half)}
+    if(v0<v1)usedSp.push({u0:s.sp.u0,u1:s.sp.u1,v0:Math.max(s.sp.v0,v0),v1:Math.min(s.sp.v1,v1)});
+  }
+  // drop bays the driveway runs through
+  const bays=core.bays.filter(b=>{const bb=bbox(b.pts);return !(bbHit(bb,sb)&&sat(b.pts,stub))}).map(b=>({...b,kind:undefined}));
+  if(!bays.length)return null;
+  // accessible bays nearest the crossover, each with a shared zone beside it
   let accN=0;
   if(S.acc>0){
-    const cand=bays.filter(b=>b.t==="p90").map(b=>{const c=centroid(b.pts);return {b,d:Math.hypot(c.x-eW.x,c.y-eW.y)}}).sort((a,b)=>a.d-b.d);
+    const cand=bays.filter(b=>b.t==="p90").map(b=>{const c=centroid(b.pts);return {b,d:Math.hypot(c.x-E.x,c.y-E.y)}}).sort((a,b)=>a.d-b.d);
     for(const {b} of cand){
       if(accN>=S.acc)break;if(b.kind)continue;
       const nb=bays.find(o=>!o.kind&&o!==b&&o.row===b.row&&Math.abs(o.i-b.i)===1);
       if(!nb)continue;b.kind="acc";nb.kind="shared";accN++;
     }
   }
-  const usedSp=spines.filter(sp=>sp.used);
+  const segAlive=new Set(bays.filter(b=>b.seg).map(b=>b.seg));
+  const aisles=keep.filter(sg=>segAlive.has(sg)||hit.sg===sg);
   const total=bays.filter(b=>b.kind!=="shared").length;
-  const blind=keep.filter(sg=>!sg.attLo||!sg.attHi).length+(mode!=="loop"?usedSp.length:0);
-  const circA=keep.reduce((m,sg)=>m+(sg.hi-sg.lo)*(sg.v1-sg.v0),0)+usedSp.reduce((m,sp)=>m+(sp.u1-sp.u0)*(sp.v1-sp.v0),0);
-  const runLen=hitT+usedSp.reduce((m,sp)=>Math.max(m,sp.v1-sp.v0),0)+keep.reduce((m,sg)=>Math.max(m,sg.hi-sg.lo),0);
-  const W=fc.toW;
+  const blind=aisles.filter(sg=>!sg.attLo||!sg.attHi).length+(core.mode!=="loop"?usedSp.length:0);
+  const circA=aisles.reduce((m,sg)=>m+(sg.hi-sg.lo)*(sg.v1-sg.v0),0)+usedSp.reduce((m,sp)=>m+(sp.u1-sp.u0)*(sp.v1-sp.v0),0);
+  const runLen=hitT+usedSp.reduce((m,sp)=>Math.max(m,sp.v1-sp.v0),0)+aisles.reduce((m,sg)=>Math.max(m,sg.hi-sg.lo),0);
+  const W=fc.toW,t=core.t;
   return {
-    t,mode,alpha:fc.alpha,phase,total,acc:accN,circA,blind,runLen,stubLen:hitT,
+    t,mode:core.mode,alpha:fc.alpha,phase:core.phase,total,acc:accN,circA,blind,runLen,stubLen:hitT,ctx,
     oneWay:t!=="p90",
     bays:bays.map(b=>({pts:b.pts.map(W),kind:b.kind||"std",t:b.t})),
-    aisles:keep.map(sg=>({pts:rect(sg.lo,sg.hi,sg.v0,sg.v1).map(W),dir:sg.dir,a:W({x:sg.lo,y:(sg.v0+sg.v1)/2}),b:W({x:sg.hi,y:(sg.v0+sg.v1)/2})})),
+    aisles:aisles.map(sg=>({pts:rect(sg.lo,sg.hi,sg.v0,sg.v1).map(W),dir:sg.dir,a:W({x:sg.lo,y:(sg.v0+sg.v1)/2}),b:W({x:sg.hi,y:(sg.v0+sg.v1)/2})})),
     spines:usedSp.map(sp=>rect(sp.u0,sp.u1,sp.v0,sp.v1).map(W)),
     stub:stub.map(W)
   };
@@ -596,12 +606,12 @@ function runLayout(ctx,fc,t,phase,mode){
 function centroid(P){let x=0,y=0;for(const p of P){x+=p.x;y+=p.y}return {x:x/P.length,y:y/P.length}}
 
 /* ---------- Iteration driver ---------- */
-let results=[],selKey=null,gen=0,ctxNow=null;
+let results=[],selKey=null,gen=0,ctxNow=null,userPicked=false;
 function describe(r,ctx){
   const rel=((r.alpha-ctx.frontDir)/D2R%180+180)%180;
   const orient=Math.abs(rel)<1||Math.abs(rel-180)<1?"aisles parallel to street":Math.abs(rel-90)<1?"aisles square to street":`grid rotated ${Math.round(rel)}°`;
   const angle=TYPES.find(x=>x[0]===r.t)[1];
-  const m={entry:"central accessway",left:"accessway at one side",right:"accessway at far side",loop:"one-way loop",spineOnly:"single accessway"}[r.mode]+(r.infill?` + ${r.infill.bays} infill`:"");
+  const m={entry:"central accessway",left:"accessway at one side",right:"accessway at far side",loop:"one-way loop",spineOnly:"single accessway"}[r.mode]+(r.zoned?` · 2 zones (+${r.zoned.bays} rotated)`:"")+(r.infill?` + ${r.infill.bays} infill`:"");
   return {angle,orient,m};
 }
 function keyOf(r){return `${r.t}|${r.mode}|${Math.round(r.alpha/D2R)}|${r.phase.toFixed(3)}|${r.ctx?r.ctx.entry.toFixed(2):""}`}
@@ -625,7 +635,7 @@ function rowPhases(fc,t){
   return out;
 }
 function recompute(){
-  const my=++gen;
+  const my=++gen;userPicked=false;
   ctxNow=buildCtx();
   const ctx=ctxNow;
   const types=TYPES.filter(([k])=>S.specs[k].on).map(x=>x[0]);
@@ -644,8 +654,12 @@ function recompute(){
     for(const t of types){
       const modes=t==="p90"?["entry","left","right","loop","spineOnly"]:["loop"];
       const phs=rowPhases(fc0,t);
-      for(let ci=0;ci<ctxs.length;ci++)for(const m of modes){
-        for(const ph of (m==="spineOnly"?[0]:phs))jobs.push([a*D2R,t,ph,m,ci]);
+      for(const m of modes){
+        const crossoverModes=m==="entry"||m==="spineOnly";
+        for(const ph of (m==="spineOnly"?[0]:phs)){
+          if(crossoverModes)for(let ci=0;ci<ctxs.length;ci++)jobs.push([a*D2R,t,ph,m,ci]);
+          else jobs.push([a*D2R,t,ph,m,-1]);
+        }
       }
     }
   }
@@ -656,16 +670,149 @@ function recompute(){
     if(my!==gen)return;
     const t0=performance.now();
     while(i<jobs.length&&performance.now()-t0<14){
-      const [a,t,ph,m,ci]=jobs[i++];const cx=ctxs[ci],ck=ci+"|"+a;
-      let fc=caches.get(ck);if(!fc){fc=frameCache(cx,a);caches.set(ck,fc)}
-      try{const r=runLayout(cx,fc,t,ph,m);if(r){r.ctx=cx;found.push(r)}}catch(e){}
+      const [a,t,ph,m,ci]=jobs[i++];
+      const fcOf=k=>{const ck=k+"|"+a;let fc=caches.get(ck);if(!fc){fc=frameCache(ctxs[k],a);caches.set(ck,fc)}return fc};
+      try{
+        if(ci>=0){ // accessway in line with this crossover
+          const fc=fcOf(ci),core=layoutCore(fc,t,ph,m,fc.E.x);if(core){const r=attachCrossover(core,fc,ctxs[ci]);if(r)found.push(r)}
+        }else{     // one core, best of every crossover
+          const core=layoutCore(fcOf(0),t,ph,m,0);
+          if(core){let best=null;for(let k=0;k<ctxs.length;k++){const r=attachCrossover(core,fcOf(k),ctxs[k]);if(r&&(!best||r.total>best.total||(r.total===best.total&&r.circA<best.circA)))best=r}if(best)found.push(best)}
+        }
+      }catch(e){}
     }
     if(i<jobs.length){$("#status").textContent=`testing ${i} / ${jobs.length}…`;setTimeout(step,0);return}
+    window.__blDone=false;
     finish(found,jobs.length,ctx);
+    // second stage: zoned layouts for lots with an inside corner
+    if(!polySplits(ctx.usable).length){window.__blDone=true;return}
+    $("#status").textContent+=" · trying zoned layouts…";
+    setTimeout(()=>{
+      if(my!==gen)return;
+      let extra=[];try{extra=zoneSearch(ctxs,types)}catch(e){console.error(e)}
+      if(my!==gen)return;
+      finish(found.concat(extra),jobs.length+extra.length,ctx);
+      window.__blDone=true;
+    },30);
   };
-  if(!jobs.length){finish([],0,ctx);return}
+  if(!jobs.length){finish([],0,ctx);window.__blDone=true;return}
   step();
 }
+/* ---------- Zones ----------
+   Lots with an inside corner (L, T, dog-leg) are also cut from that corner
+   into two pieces. The piece on the street is laid out with its own grid and
+   crossover; the other piece gets its own grid angle and is reached from an
+   aisle or accessway end in the first piece, extended to the cut if needed. */
+function polySplits(P){
+  const n=P.length,sg=Math.sign(area(P))||1,A=Math.abs(area(P)),out=[];
+  const clean=r=>r.filter((q,ix)=>len(sub(q,r[(ix+1)%r.length]))>0.05);
+  for(let i=0;i<n;i++){
+    const a=P[(i-1+n)%n],v=P[i],b=P[(i+1)%n];
+    if(sg*cross(sub(v,a),sub(b,v))>=-1e-9)continue;              // not an inside corner
+    for(const d of [unit(sub(v,a)),unit(sub(v,b))]){
+      let best=null;
+      for(let k=0;k<n;k++){
+        if(k===i||(k+1)%n===i)continue;
+        const p=P[k],q=P[(k+1)%n],e=sub(q,p),den=cross(d,e);if(Math.abs(den)<1e-12)continue;
+        const w=sub(p,v),t=cross(w,e)/den,u=cross(w,d)/den;
+        if(t>1e-6&&u>=-1e-9&&u<=1+1e-9&&(!best||t<best.t))best={t,k,h:add(v,mul(d,t))};
+      }
+      if(!best||!pip(add(v,mul(d,best.t/2)),P))continue;
+      const k=best.k,h=best.h,p1=[v],p2=[h];
+      for(let j=(i+1)%n;;j=(j+1)%n){p1.push(P[j]);if(j===k)break}
+      p1.push(h);
+      for(let j=(k+1)%n;;j=(j+1)%n){p2.push(P[j]);if(j===i)break}
+      const P1=clean(p1),P2=clean(p2);if(P1.length<3||P2.length<3)continue;
+      const a1=Math.abs(area(P1)),a2=Math.abs(area(P2));
+      if(Math.min(a1,a2)<Math.max(300,A*0.12))continue;
+      out.push({P1,P2,cut:[v,h],bal:Math.min(a1,a2)/A});
+    }
+  }
+  out.sort((x,y)=>y.bal-x.bal);
+  const uniq=[];for(const s of out)if(!uniq.some(u=>len(sub(u.cut[0],s.cut[0]))+len(sub(u.cut[1],s.cut[1]))<2))uniq.push(s);
+  return uniq.slice(0,4);
+}
+function regionAlphas(P,base){
+  const set=new Set(),addA=a=>{let d=((a/D2R)%180+180)%180;set.add(Math.round(d*100)/100)};
+  addA(base);addA(base+90*D2R);
+  for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length];if(len(sub(b,a))>=8){const d=Math.atan2(b.y-a.y,b.x-a.x);addA(d);addA(d+90*D2R)}}
+  return [...set].map(d=>d*D2R);
+}
+// synchronous search over a set of crossover contexts
+function searchSync(ctxList,alphas,types){
+  const found=[];
+  for(const a of alphas){
+    const fcs=ctxList.map(c=>frameCache(c,a));
+    for(const t of types){
+      const modes=t==="p90"?["entry","left","right","loop","spineOnly"]:["loop"];
+      for(const ph of rowPhases(fcs[0],t))for(const m of modes){
+        if(m==="spineOnly"&&ph!==0)continue;
+        try{
+          if(m==="entry"||m==="spineOnly"){for(let k=0;k<fcs.length;k++){const core=layoutCore(fcs[k],t,ph,m,fcs[k].E.x);if(core){const r=attachCrossover(core,fcs[k],ctxList[k]);if(r)found.push(r)}}}
+          else{const core=layoutCore(fcs[0],t,ph,m,0);if(core){let best=null;for(let k=0;k<fcs.length;k++){const r=attachCrossover(core,fcs[k],ctxList[k]);if(r&&(!best||r.total>best.total))best=r}if(best)found.push(best)}}
+        }catch(e){}
+      }
+    }
+  }
+  return found.sort((x,y)=>y.total-x.total||x.circA-y.circA);
+}
+// where the first zone's circulation can carry on into the second zone
+function zoneConnectors(ra,cut,B,Qall){
+  const d=unit(sub(cut[1],cut[0]));let nB={x:-d.y,y:d.x};const mid=mul(add(cut[0],cut[1]),0.5);
+  if(!pip(add(mid,mul(nB,0.5)),B))nB=mul(nB,-1);
+  const bayF=ra.bays.map(b=>({p:b.pts,b:bbox(b.pts)}));
+  const free=p=>{if(!inside(p,Qall))return false;const bb=bbox(p);return !bayF.some(o=>bbHit(bb,o.b)&&sat(p,o.p))};
+  const out=[];
+  for(const R of [...ra.aisles.map(a=>a.pts),...ra.spines]){
+    const c0=centroid(R);
+    for(let i=0;i<R.length;i++){
+      const a=R[i],b=R[(i+1)%R.length],el=len(sub(b,a));if(el>8.5||el<3)continue;     // aisle / accessway ends only
+      const t=unit(sub(b,a));let n={x:-t.y,y:t.x};const m=mul(add(a,b),0.5);if((m.x-c0.x)*n.x+(m.y-c0.y)*n.y<0)n=mul(n,-1);
+      if(n.x*nB.x+n.y*nB.y<0.5)continue;                                                  // must head into the second zone
+      const den=cross(n,d);if(Math.abs(den)<1e-9)continue;
+      const w=sub(cut[0],m),s=cross(w,d)/den,u=cross(w,n)/den;
+      if(s<-0.3||s>30||u<-0.5||u>len(sub(cut[1],cut[0]))+0.5)continue;
+      const rectC=s>0.3?[a,b,add(b,mul(n,s+0.05)),add(a,mul(n,s+0.05))]:null;
+      if(rectC&&!free(rectC))continue;
+      out.push({c:add(add(m,mul(n,Math.max(0,s))),mul(n,0.05)),n,rect:rectC,s:Math.max(0,s)});
+    }
+  }
+  return out.sort((x,y)=>x.s-y.s).slice(0,3);
+}
+function combineZones(ra,rb,con,baseCtx){
+  const bBays=rb.bays.map(b=>({...b,kind:b.kind==="acc"||b.kind==="shared"?"std":b.kind}));
+  const extra=[];if(con.rect)extra.push({pts:con.rect,dir:0,a:centroid(con.rect),b:centroid(con.rect)});
+  extra.push({pts:rb.stub,dir:0,a:centroid(rb.stub),b:centroid(rb.stub)});
+  const bays=[...ra.bays,...bBays];
+  return {...ra,ctx:baseCtx,bays,aisles:[...ra.aisles,...extra,...rb.aisles],spines:[...ra.spines,...rb.spines],
+    total:bays.filter(b=>b.kind!=="shared").length,circA:ra.circA+rb.circA+extra.reduce((m,e)=>m+Math.abs(area(e.pts)),0),
+    blind:ra.blind+rb.blind,runLen:ra.runLen+rb.runLen,zoned:{alphaB:rb.alpha,bays:rb.total},validated:false,infilled:false,oneWay:ra.oneWay&&rb.oneWay};
+}
+function zoneSearch(ctxs,types){
+  const base=ctxs[0];const splits=polySplits(base.usable);if(!splits.length)return [];
+  const out=[];
+  const fs=base.site[base.fe],fe=base.site[(base.fe+1)%base.site.length];
+  for(const sp of splits){
+    let A=sp.P1,B=sp.P2;
+    const inA=c=>pip(add(c.E,mul(c.nW,0.6)),A);
+    let cA=ctxs.filter(inA);
+    if(!cA.length){[A,B]=[B,A];cA=ctxs.filter(c=>pip(add(c.E,mul(c.nW,0.6)),A))}
+    if(!cA.length)continue;
+    const ctxA=cA.map(c=>({...c,usable:A}));
+    const resA=searchSync(ctxA,regionAlphas(A,base.frontDir),types).slice(0,2);
+    for(const ra of resA){
+      for(const con of zoneConnectors(ra,sp.cut,B,base.usable)){
+        const cB={entry:0,site:B,usable:B,E:con.c,nW:con.n,fe:-1,frontDir:Math.atan2(con.n.x,-con.n.y),siteArea:Math.abs(area(B))};
+        const rb=searchSync([cB],regionAlphas(B,Math.atan2(sp.cut[1].y-sp.cut[0].y,sp.cut[1].x-sp.cut[0].x)),types)[0];
+        if(!rb)continue;
+        const orig=ctxs.find(c=>Math.abs(c.entry-ra.ctx.entry)<1e-9)||base;
+        out.push(combineZones(ra,rb,con,orig));
+      }
+    }
+  }
+  return out;
+}
+
 /* ---------- Local infill ----------
    After the main grid is laid out, leftover space next to the circulation is
    filled with small layouts oriented to their own spot:
@@ -683,6 +830,7 @@ function infillCombos(){
 }
 const unit=v=>{const l=Math.hypot(v.x,v.y)||1;return {x:v.x/l,y:v.y/l}};
 function infill(r,ctx){
+  if(r.infilled)return r;r.infilled=true;
   const combos=infillCombos();if(!combos.length)return r;
   const Q=ctx.usable,ext=S.blind?1.0:0;
   const occ=[...r.bays.map(b=>b.pts),...r.aisles.map(a=>a.pts),...r.spines,r.stub].map(p=>({p,b:bbox(p)}));
@@ -746,11 +894,63 @@ function infill(r,ctx){
   return r;
 }
 
+/* ---------- Layout rule checker ----------
+   Every layout shown is checked against hard rules, and bays that break one
+   are removed before ranking:
+   - the bay lies inside the usable lot;
+   - it does not overlap another bay, an aisle, the accessway or the driveway;
+   - it opens onto circulation through its entry edge (a short edge for
+     90/60/45 degree bays, a long edge for parallel bays);
+   - that circulation is connected back to the crossover. */
+function validateLayout(r,ctx){
+  if(r.validated)return r;
+  const Q=ctx.usable;
+  const circ=[r.stub,...r.spines,...r.aisles.map(a=>a.pts)].map((p,i)=>({p,b:bbox(p),i}));
+  // connectivity from the crossover driveway (index 0)
+  const grow=p=>{const c=centroid(p);return p.map(q=>{const d=sub(q,c),l=len(d)||1;return add(q,mul(d,0.15/l))})};
+  const gp=circ.map(c=>{const p=grow(c.p);return {p,b:bbox(p)}});
+  const reached=new Set([0]),stack=[0];
+  while(stack.length){const i=stack.pop();for(let j=0;j<circ.length;j++){if(reached.has(j))continue;if(bbHit(gp[i].b,gp[j].b)&&sat(gp[i].p,gp[j].p)){reached.add(j);stack.push(j)}}}
+  const live=circ.filter(c=>reached.has(c.i));
+  const shrink=p=>{const c=centroid(p);return p.map(q=>add(c,mul(sub(q,c),0.995)))};
+  const reasons={outside:0,overlap:0,unserved:0,disconnected:0};const badList=[];
+  const keep=[];
+  const placed=[];
+  for(const b of r.bays){
+    const pts=b.pts,bb=bbox(pts);
+    if(!inside(shrink(pts),Q)){reasons.outside++;badList.push({why:'outside',b});continue}
+    let bad=false;
+    let hitWhat=null;for(const c of circ)if(bbHit(bb,c.b)&&sat(pts,c.p)){bad=true;hitWhat='circ'+c.i;break}
+    if(!bad)for(const o of placed)if(bbHit(bb,o.b)&&sat(pts,o.p)){bad=true;hitWhat='bay';break}
+    if(bad){reasons.overlap++;badList.push({why:'overlap',b,hitWhat});continue}
+    if(b.kind!=="shared"){
+      // entry edges: the two short edges (long edges for parallel bays)
+      const E=pts.map((a,i)=>{const q=pts[(i+1)%4];return {a,q,l:len(sub(q,a))}});
+      const sorted=E.slice().sort((x,y)=>x.l-y.l);
+      const entry=b.t==="par"?sorted.slice(2):sorted.slice(0,2);
+      const c0=centroid(pts);
+      const opensOnto=set=>entry.some(e=>{const m=mul(add(e.a,e.q),0.5),d=sub(m,c0),n=mul(d,0.4/(len(d)||1)),pr=add(m,n);return set.some(c=>pr.x>=c.b.x0-1e-6&&pr.x<=c.b.x1+1e-6&&pr.y>=c.b.y0-1e-6&&pr.y<=c.b.y1+1e-6&&pip(pr,c.p))});
+      if(!opensOnto(circ)){reasons.unserved++;continue}
+      if(!opensOnto(live)){reasons.disconnected++;continue}
+    }
+    keep.push(b);placed.push({p:pts,b:bb});
+  }
+  // shared zones only stay next to a surviving accessible bay
+  const accs=keep.filter(b=>b.kind==="acc");
+  const kept=keep.filter(b=>b.kind!=="shared"||accs.some(a=>{const g=grow(a.pts);return sat(g,b.pts)}));
+  const dropped=r.bays.filter(b=>b.kind!=="shared").length-kept.filter(b=>b.kind!=="shared").length;
+  r.bays=kept;r.total=kept.filter(b=>b.kind!=="shared").length;r.acc=accs.length;
+  r.issues={dropped,reasons,bad:badList};r.validated=true;
+  return r;
+}
+
 function finish(found,n,ctx){
   found.sort((a,b)=>b.total-a.total||b.acc-a.acc||a.circA-b.circA);
   // fill leftover space on the strongest candidates, then rank again
   {const t0=performance.now();for(const r of found.slice(0,18)){try{infill(r,r.ctx||ctx)}catch(e){}}window.__infillMs=Math.round(performance.now()-t0);}
-  found.sort((a,b)=>b.total-a.total||b.acc-a.acc||a.circA-b.circA);
+  {const t0=performance.now();for(const r of found.slice(0,40)){try{validateLayout(r,r.ctx||ctx)}catch(e){r.issues={error:String(e)}}}window.__validateMs=Math.round(performance.now()-t0);}
+  for(let i=found.length-1;i>=0;i--)if(found[i].validated&&found[i].total<1)found.splice(i,1);
+  found.sort((a,b)=>(b.validated?1:0)-(a.validated?1:0)||b.total-a.total||b.acc-a.acc||a.circA-b.circA);
   const seen=new Set(),out=[];
   for(const r of found){
     const sig=`${r.t}|${r.total}|${Math.round(r.alpha/D2R)}`;
@@ -758,9 +958,9 @@ function finish(found,n,ctx){
     if(out.length>=12)break;
   }
   // keep at least one per bay type if possible
-  for(const [t] of TYPES){if(!out.some(r=>r.t===t)){const r=found.find(x=>x.t===t);if(r){if(out.length>=12)out.pop();out.push(r)}}}
+  for(const [t] of TYPES){if(!out.some(r=>r.t===t)){const r=found.find(x=>x.t===t);if(r){validateLayout(r,r.ctx||ctx);if(out.length>=12)out.pop();out.push(r)}}}
   results=out;
-  if(!results.some(r=>keyOf(r)===selKey))selKey=results[0]?keyOf(results[0]):null;
+  if(!userPicked||!results.some(r=>keyOf(r)===selKey))selKey=results[0]?keyOf(results[0]):null;
   $("#status").textContent=n?`${n} tested · best ${results.length} shown`:"";
   renderOptions();renderSelected();
 }
@@ -871,6 +1071,7 @@ function checks(r){
   if(r.blind)out.push(S.blind?["info",`${r.blind} dead-end aisle${r.blind>1?"s":""}: the 1.0 m extension is applied. Check cars can turn and leave forwards (required when an accessway serves 4+ bays).`]:["warn",`${r.blind} dead-end aisle${r.blind>1?"s":""} with no extension past the last bay. AS/NZS 2890.1 asks for 1.0 m.`]);
   if(S.acc>0)out.push(r.acc>=S.acc?["ok",`${r.acc} accessible bay${r.acc>1?"s":""} with shared zone, placed nearest the crossover (AS/NZS 2890.6).`]:["warn",`Only ${r.acc} of ${S.acc} accessible bays fit beside a 90° bay pair.`]);
   if(S.acc>0&&S.specs.p90.W<2.4)out.push(["warn","Accessible bays need 2.4 m width plus a 2.4 m shared zone. Your 90° width is smaller."]);
+  if(r.issues&&r.issues.dropped)out.push(["warn",`${r.issues.dropped} bay${r.issues.dropped>1?"s":""} removed by the rule checker (${Object.entries(r.issues.reasons).filter(([,n])=>n).map(([k,n])=>n+" "+k).join(", ")}).`]);
   if(r.infill){
     out.push(["info",`Infill: ${r.infill.bays} bays added in leftover space${r.infill.aisles?` on ${r.infill.aisles} locally oriented aisle${r.infill.aisles>1?"s":""}`:""}.`]);
     for(const n of r.infill.narrow)out.push(["ok",`Infill uses ${n}, an allowed pairing in Clause 52.06-9 Table 2.`]);
@@ -887,7 +1088,7 @@ function renderOptions(){
     const d=describe(r,ctxNow);
     const b=document.createElement("button");b.type="button";b.className="opt"+(keyOf(r)===selKey?" sel":"");
     b.innerHTML=`<canvas></canvas><div class="meta"><span class="rank">Option ${i+1}</span><b>${r.total}<small>bays</small></b><span>${d.angle} · ${d.m}</span><span>${d.orient}</span></div>`;
-    b.addEventListener("click",()=>{selKey=keyOf(r);renderOptions();renderSelected()});
+    b.addEventListener("click",()=>{selKey=keyOf(r);userPicked=true;renderOptions();renderSelected()});
     g.appendChild(b);
     requestAnimationFrame(()=>draw(b.querySelector("canvas"),r.ctx||ctxNow,r,{pad:8,small:true}));
   });
@@ -1319,6 +1520,8 @@ $("#searchForm").addEventListener("submit",async e=>{
 });
 document.addEventListener("click",e=>{if(!e.target.closest(".search"))$("#results").hidden=true});
 
+/* test hook */
+window.__bl={get results(){return results},get S(){return S},recompute:()=>recompute(),validateLayout};
 /* ---------- Boot ---------- */
 const hadSaved=(()=>{try{return !!localStorage.getItem(KEY)}catch(e){return false}})();
 bind();renderDims();renderFront();renderSpecs();loadSites();initMap();
