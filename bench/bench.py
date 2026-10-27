@@ -1,7 +1,9 @@
-import asyncio,json,sys,time
+import asyncio,json,os,sys,time
+HERE=os.path.dirname(os.path.abspath(__file__))
 from playwright.async_api import async_playwright
-lots=json.load(open('/home/claude/bench/lots.json'))
-page=sys.argv[1]; tag=sys.argv[2] if len(sys.argv)>2 else ''
+lots=json.load(open(os.path.join(HERE,'lots.json')))
+page=os.path.abspath(sys.argv[1]); tag=sys.argv[2] if len(sys.argv)>2 else 'run'
+OUT=os.path.join(HERE,'out');os.makedirs(OUT,exist_ok=True)
 base={"setF":0,"setO":0,"entryAuto":True,"entry":0.5,"std":"vic26","spineW":6.4,"drvW":6.1,"acc":0,"blind":True,"wall":True,"sweep":True,
  "specs":{"p90":{"on":True,"W":2.6,"L":4.9,"A":6.4},"p60":{"on":False,"W":2.6,"L":4.9,"A":4.9},"p45":{"on":False,"W":2.6,"L":4.9,"A":3.5},"par":{"on":False,"W":2.3,"L":6.7,"A":3.6}},
  "dims":{"rect":{"F":40,"D":55},"trap":{"F":42,"D":60,"R":30,"O":6},"splay":{"F":45,"D":50,"C":8},"L":{"F":48,"D":60,"NW":20,"ND":24}}}
@@ -28,9 +30,9 @@ async def main():
             rows.append({"i":i,"lot":f'{l["name"]} {l["spi"]}',"area":l["area"],"bays":best["total"],"m2":round(l["area"]/max(1,best["total"]),1),"pack":round(best["total"]/ideal,2),"t":round(dt,1),
                          "dropped":sum((r.get("issues") or {}).get("dropped",0) for r in res if r.get("issues")),"bestdrop":(best.get("issues") or {}).get("dropped"),"mode":best.get("mode"),"infill":best.get("infill")})
             if len(sys.argv)>3:
-                el=await pg.query_selector('.sheet');await el.screenshot(path=f'/home/claude/bench/{tag}_{i:02d}.png')
+                el=await pg.query_selector('.sheet');await el.screenshot(path=os.path.join(OUT,f'{tag}_{i:02d}.png'))
         await b.close()
-    json.dump(rows,open(f'/home/claude/bench/res_{tag}.json','w'))
+    json.dump(rows,open(os.path.join(OUT,f'res_{tag}.json'),'w'))
     for r in rows:print(f'{r["i"]:2d} {r["lot"][:38]:38s} {r["area"]:5d}m² {r["bays"]:4d} bays {r["m2"]:5.1f}m²/bay pack {r["pack"]:.2f} drop {r["dropped"]} {r["t"]}s {r["mode"] or ""} +{r["infill"] or 0}')
     print("TOTAL bays",sum(r["bays"] for r in rows),"| mean pack %.3f"%(sum(r["pack"] for r in rows)/len(rows)),"| total time %.1fs"%sum(r["t"] for r in rows))
 asyncio.run(main())
