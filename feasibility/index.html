@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="description" content="Residential feasibility for Victorian sites: pick a Vicmap lot, check its zone and overlays, set planning controls, stack ground, podium and tower levels inside the envelope, then place a core and structural grid.">
+<meta name="description" content="Residential feasibility for Victorian sites: pick a Vicmap lot, check its zone and overlays, set planning controls, stack ground, podium and tower levels inside the envelope, then place a core and structural grid, cut the floors into apartments and test the parking.">
 <title>Bayline Feasibility</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
@@ -161,8 +161,11 @@
           <div class="fld"><label class="cap" for="gCol">Column m</label><input id="gCol" type="number" step="0.05" min="0.2"></div>
         </div>
         <div class="row" style="align-items:center">
+          <div class="fld" style="flex:2 1 180px"><label class="cap" for="gCentre">Grid position</label><select id="gCentre"><option value="auto">Centred on the tower (auto)</option><option value="line">Centred: grid line on the middle</option><option value="mid">Centred: bay on the middle</option><option value="manual">Set by hand (aligned to a core)</option></select></div>
+        </div>
+        <div class="row" style="align-items:center">
           <button class="btn" id="gAlign" type="button">Align grid to core</button>
-          <label class="chk"><input type="checkbox" id="gSnap"> Snap cores to grid</label>
+          <label class="chk"><input type="checkbox" id="gSnap"> Snap cores to grid lines or mid-bay</label>
         </div>
         <div class="cap">Car park below</div>
         <div class="row">
@@ -178,7 +181,7 @@
         <div class="fld"><label class="cap" for="aTyp">Typical floor shown</label><select id="aTyp"></select></div>
         <div style="overflow-x:auto">
           <table class="specs" id="briefTable">
-            <thead><tr><th>Type</th><th>Min m²</th><th>Target</th><th>Max</th><th>Width m</th><th>Mix %</th><th></th></tr></thead>
+            <thead><tr><th>Type</th><th>Beds</th><th>Min m²</th><th>Target</th><th>Max</th><th>Width m</th><th>Mix %</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -192,6 +195,30 @@
         <div id="aptOut" class="aptout"></div>
         <p class="hint">Width is the minimum facade frontage. Mix is by number of apartments. On the plan, drag a wall's dot along the facade to move it, double-click a dot to remove the wall, or double-click inside an apartment to split it.</p>
       </section>
+
+      <section class="panel" aria-labelledby="h-park">
+        <h2 id="h-park">Step 7 · Parking <span id="parkState"></span></h2>
+        <div class="row">
+          <div class="fld"><label class="cap" for="pCol">Clause 52.06-5 rates</label><select id="pCol"><option value="A">Column A</option><option value="B">Column B (PPTN area)</option></select></div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="specs" id="rateTable">
+            <thead><tr><th>Spaces per</th><th>1–2 bed</th><th>3+ bed</th><th>Visitor / dwelling</th><th>Retail / 100 m²</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="row">
+          <div class="fld"><label class="cap" for="pBase">Basements</label><select id="pBase"><option value="auto">Auto: enough for the requirement</option><option value="0">None</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></div>
+          <div class="fld"><label class="cap" for="pBSet">Basement setback m</label><input id="pBSet" type="number" step="0.5" min="0"></div>
+        </div>
+        <div class="row">
+          <div class="fld"><label class="cap" for="pBFtf">Basement floor to floor m</label><input id="pBFtf" type="number" step="0.1" min="2.4"></div>
+          <div class="fld"><label class="cap" for="pRampW">Ramp width m</label><input id="pRampW" type="number" step="0.1" min="3"></div>
+          <div class="fld"><label class="cap" for="pGrade">Ramp 1 in</label><input id="pGrade" type="number" step="0.5" min="4"></div>
+        </div>
+        <div id="parkOut" class="parkout"></div>
+        <p class="hint">Bays and aisles use the sizes under Step 5. Columns come from the structural grid, cores run down through every level, and the ramp sits on the street edge, centred in a column bay. Rates are Clause 52.06-5 Table 1 starting values; check any Parking Overlay schedule.</p>
+      </section>
     </aside>
 
     <main>
@@ -202,6 +229,7 @@
             <div class="tools">
               <div class="seg" role="group" aria-label="View">
                 <button class="btn on" id="vPlan" type="button" aria-pressed="true">Plan</button>
+                <button class="btn" id="vPark" type="button" aria-pressed="false">Parking</button>
                 <button class="btn" id="v3d" type="button" aria-pressed="false">3D</button>
               </div>
               <button class="btn" id="rot" type="button" title="Rotate the 3D view" hidden>Rotate</button>
@@ -228,6 +256,8 @@
 <script src="grid.js"></script>
 <script src="cores.js"></script>
 <script src="apartments.js"></script>
+<script src="../lib/carpark.js"></script>
+<script src="parking.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

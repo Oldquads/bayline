@@ -36,15 +36,26 @@ function columns(P,shape,cores){
   }
   return out;
 }
-/* move a core so its edges sit on grid lines (only when it is square to the grid) */
+/* move a core's centre onto a grid line or midway between two, both ways (only when it is square to the grid) */
 function snap(P,inst,geo){
   const F=frame(P),g=P.grid;
   const rel=(((inst.rot||0)*D2R-F.t)%(Math.PI/2)+Math.PI/2)%(Math.PI/2);
   if(Math.min(rel,Math.PI/2-rel)>0.01)return {x:inst.x,y:inst.y};
-  const q=F.toG({x:inst.x,y:inst.y}),us=geo.outline.map(p=>F.toG(p).u),vs=geo.outline.map(p=>F.toG(p).v);
-  const hu=(Math.max(...us)-Math.min(...us))/2,hv=(Math.max(...vs)-Math.min(...vs))/2;
-  const s=(x,h,step)=>{const lo=Math.round((x-h)/step)*step+h,hi=Math.round((x+h)/step)*step-h;return Math.abs(lo-x)<=Math.abs(hi-x)?lo:hi};
-  const w=F.toW(s(q.u,hu,g.sx),s(q.v,hv,g.sy));return {x:w.x,y:w.y};
+  const q=F.toG({x:inst.x,y:inst.y}),w=F.toW(Math.round(q.u/(g.sx/2))*(g.sx/2),Math.round(q.v/(g.sy/2))*(g.sy/2));
+  return {x:w.x,y:w.y};
+}
+/* Grid origin centred on a floorplate (the typical tower floor): the plate's middle on a grid line
+   ("line"), midway between two ("mid"), or whichever puts the outer grid lines nearer the facade ("auto"). */
+function centreOn(P,shape){
+  const g=P.grid,pts=shape.flat();if(!pts.length)return null;
+  const t=angle(P),c=Math.cos(t),s=Math.sin(t);
+  const us=pts.map(p=>p.x*c+p.y*s),vs=pts.map(p=>-p.x*s+p.y*c);
+  const bu=[Math.min(...us),Math.max(...us)],bv=[Math.min(...vs),Math.max(...vs)],mu=(bu[0]+bu[1])/2,mv=(bv[0]+bv[1])/2;
+  // overhang beyond the outermost grid line inside the plate, for a line or a bay at the middle
+  const over=(lo,hi,mid,sp,off)=>{const half=(hi-lo)/2,k=Math.floor((half-off)/sp+1e-9);return half-(off+k*sp)};
+  const pick=(lo,hi,mid,sp)=>{if(g.centre==="line")return 0;if(g.centre==="mid")return sp/2;return over(lo,hi,mid,sp,0)<=over(lo,hi,mid,sp,sp/2)?0:sp/2};
+  const ou=mu-pick(bu[0],bu[1],mu,g.sx),ov=mv-pick(bv[0],bv[1],mv,g.sy);
+  return {ox:ou*c-ov*s,oy:ou*s+ov*c};
 }
 
 /* How a column spacing suits parking.
@@ -66,5 +77,5 @@ function carpark(P,span){
   return {c,best:opt[0],other:opt[1]};
 }
 
-window.GRID={angle,frame,lines,columns,snap,carpark};
+window.GRID={angle,frame,lines,columns,snap,centreOn,carpark};
 })();

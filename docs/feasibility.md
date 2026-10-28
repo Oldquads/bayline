@@ -10,7 +10,7 @@ Live at **https://oldquads.github.io/bayline/feasibility/**. The car park page (
 4. Select a core configuration → **done** (phase 2)
 5. Apply a structural grid to the typical floor → **done** (phase 2)
 6. Cut the floor into apartments from a sizing brief → **done** (phase 3)
-7. Test the parking arrangement → phase 4 (reuse the car park engine, add columns, core and ramp as obstacles)
+7. Test the parking arrangement → **done** (phase 4)
 
 Phase 5: scenario compare, exports (PDF, DXF), proper 3D.
 
@@ -100,3 +100,34 @@ Checks: apartments per typical floor and efficiency, mix within 10 points of the
 `node bench/feas.js` now also fails a lot with no apartments laid out, and reports apartments, off-brief units and mean typical-floor efficiency per zone. Current: MUZ 40 m 5,251 apartments (off brief 49 of 455 on typical floors, 64% mean efficiency), GRZ 1,262 (39 of 418, 70%), RGZ 1,433 (40 of 334, 70%). Efficiency is low on whole-envelope plates because their middle is wasted; the check says so.
 
 Tried and dropped: placing cores in the plate's middle first (outside the apartment strip). It ran 4-5× slower for ±1 point of efficiency.
+
+## Grid and core changes (with phase 4)
+
+- **Grid centred on the typical tower floor** (`GRID.centreOn`): its middle on a grid line, on a mid-bay, or "auto" (whichever puts the outer grid lines nearer the facade). "Align grid to core" switches to set-by-hand.
+- **Cores snap their centre** to a grid line or midway between two, both ways (`GRID.snap`).
+- **Corridor**: a band of corridor width (1.6 m default) just inside the apartments, drawn on the plan; a core that doesn't touch it is flagged.
+
+## Phase 4: parking
+
+`feasibility/parking.js`, Step 7 and the Parking view.
+
+**Required** (Clause 52.06-5 Table 1, editable, rounded down): Column A 1 space per 1–2 bed dwelling, 2 per 3+ bed, 1 visitor per 5 dwellings (5 or more), retail 4 per 100 m²; Column B (PPTN area) 1 / 1 / 0 / 3.5. Dwellings by bedrooms come from the apartment layouts (Beds column in the brief; studios count with 1–2 bed). Rates were set from memory and one council memo: planning.vic.gov.au wasn't reachable to confirm them.
+
+**Provided**: basements (auto = as many as the requirement needs, up to 6; or a fixed number) plus every level group whose use is Car park. Each level is laid out by the shared engine (`CARPARK.runSync`) with obstacles:
+- columns from the structural grid inside the level outline (0.6 m default),
+- every core (they run down through the basements),
+- a ramp (6.1 m wide, length = basement floor-to-floor × 6) from the street edge, its foot being the level's entry. Up to three ramp positions are tried (centred in a column bay, at least 8 m apart, preferring a foot with no core in the next 15 m); the one that parks most is kept.
+
+All basements are alike, so one is laid out and repeated. Results are cached by outline, obstacles and entry, and computed after the rest of the page (levels first, then the cost breakdown).
+
+**Engine moves added for obstacles** (all general, none run without obstacles, car park benchmark unchanged at 3,420):
+1. Bays and the rule checker reject overlaps with obstacles; infill keeps clear of them.
+2. Aisles stop at obstacles; pieces still joined to an accessway are kept.
+3. The main accessway keeps the longest clear stretch of its band (≥ 12 m), trying sideways shifts up to half a bay.
+4. A bay blocked by an obstacle restarts exactly at the obstacle's far face (so 3 × 2.6 m + 0.6 m column fill an 8.4 m bay), along aisles and along the accessway.
+5. Row offsets that put an aisle just clear of a column line, and a row spacing stretched to a whole number of column bays (within 2.5 m, e.g. 16.2 → 16.8 m) so aisles stay between the same column lines.
+6. An entry whose driveway is blocked slides along the frontage (up to 4.5 m); the driveway may also jog sideways up to 3 m to reach circulation.
+
+**Checks**: provided vs required, the requirement broken down, basements used, a shortfall even at the maximum, no room for a ramp, and what the columns, cores and ramp cost a basement (the same level laid out without each). When no basement layout fits around the cores and columns, the page says so with that breakdown.
+
+**Known limits**: the engine's model is one straight accessway with aisles off it, so cores in the middle of a basement and narrow tails with columns cost a lot, and a few lots get no basement layout (reported). Next engine moves: aisles that route around a core, a second accessway, and ramps that turn.

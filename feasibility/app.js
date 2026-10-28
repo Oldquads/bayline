@@ -3,7 +3,7 @@
 "use strict";
 const $=s=>document.querySelector(s);
 const {area,bbox,inward,shapeArea,projectRing}=window.G;
-const R=window.RULES,E=window.ENV,C=window.CORES,GR=window.GRID,AP=window.APTS;
+const R=window.RULES,E=window.ENV,C=window.CORES,GR=window.GRID,AP=window.APTS,PK=window.PARK;
 const fmt=(v,d=0)=>(v==null||!isFinite(v))?"–":(+v).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -26,11 +26,11 @@ function defaultProject(){
 /* fields added after phase 1; fills them in on older saved projects */
 function ensure(o){
   o.cores=o.cores||[];if(o.coreAuto==null)o.coreAuto=true;o.coreSel=o.coreSel||0;
-  o.grid={sx:8.4,sy:8.4,angle:null,ox:0,oy:0,col:0.6,snap:true,...(o.grid||{})};
-  o.park={W:2.6,L:4.9,A:6.4,...(o.park||{})};
+  o.grid={sx:8.4,sy:8.4,angle:null,ox:0,oy:0,col:0.6,snap:true,centre:"auto",...(o.grid||{})};
+  o.park={...PK.defaults(),...(o.park||{})};if(!o.park.rates||!o.park.rates.A)o.park.rates=PK.defaults().rates;
   o.coreRules={aptsPerLift:60,aptDepth:9,travel:6,exitsApart:45,...(o.coreRules||{})};
   o.coreView={cat:"all",suit:true,...(o.coreView||{})};
-  o.apt={...AP.defaults(),...(o.apt||{})};if(o.coreRules.aptDepth&&!(o.apt&&o.apt._d)){o.apt.depth=o.coreRules.aptDepth;o.apt._d=1}
+  o.apt={...AP.defaults(),...(o.apt||{})};for(const t of o.apt.types)if(t.beds==null)t.beds=PK.bedsOf(t);if(o.coreRules.aptDepth&&!(o.apt&&o.apt._d)){o.apt.depth=o.coreRules.aptDepth;o.apt._d=1}
   return o;
 }
 function gridOrigin(site){const a=site.pts[Math.min(site.front||0,site.pts.length-1)];return {ox:a.x,oy:a.y}}
@@ -86,17 +86,19 @@ function recompute(){
   applyEff();
   if(!window.ClipperLib){$("#summary").innerHTML=`<p class="hint">The geometry library didn't load. Check your connection and reload.</p>`;return}
   RES=E.compute(P);MAX=E.maxOut(P);
+  centreGrid();
   if(P.coreAuto&&!P.cores.length&&C.lib){const s=C.suggest(P,RES);P.coreAuto=false;if(s.length){P.cores=s;P.coreSel=0;renderCores()}}
   RES.coreArea=P.cores.map(C.geom).filter(Boolean).reduce((m,g)=>m+g.area,0);
   layouts();
   if(C.lib)RES.checks.push(...C.checks(P,RES,P.cores));
   RES.checks.push(...aptChecks());
+  parkSoon();
   RES.checks.push(...gridChecks());
   renderSummary();renderStackOut();renderSched();renderCoreNeed();renderGridFit();renderAptOut();draw();save();
 }
 let rT=null;function schedule(){clearTimeout(rT);rT=setTimeout(recompute,60)}
 
-function renderAll(){renderSite();renderPlanning();renderControls();renderStack();renderCores();renderGrid();renderBrief();recompute()}
+function renderAll(){renderSite();renderPlanning();renderControls();renderStack();renderCores();renderGrid();renderBrief();renderPark();recompute()}
 
 /* site + edges */
 const EDGE_LABEL={street:"Street",side:"Side",rear:"Rear",lane:"Lane"};
@@ -226,6 +228,7 @@ function renderSummary(){
       <dt>Apartments</dt><dd>${r.laid?"":"≈ "}${fmt(r.apts)}</dd>
       ${r.typ?`<dt>Typical floor</dt><dd>${r.typ.units.length} apts · ${fmt(r.typ.eff*100)}% eff.</dd>`:""}
       ${r.spaces?`<dt>Car spaces (podium)</dt><dd>≈ ${fmt(r.spaces)}</dd>`:""}
+      <dt>Car spaces</dt><dd>${parkSummary()}</dd>
       <dt>Core per floor</dt><dd>${P.cores.length?`${fmt(r.coreArea)} m²`:"–"}</dd>
       <dt>Site coverage</dt><dd>${lim(fmt(r.coverage),c.coverage,"%")}${c.coverage?"":"%"}</dd>
       <dt>Open area</dt><dd>${fmt(r.garden)}%</dd>
@@ -236,6 +239,8 @@ function renderSummary(){
 /* area schedule */
 function schedRows(){
   const rows=RES.groups.slice().reverse().filter(g=>g.floors).map(g=>({name:g.name,levels:lvl(g.storeyFrom)+(g.floors>1?"–"+lvl(g.storeyTo):""),floors:g.floors,ftf:g.ftf,top:g.z1,plate:g.fpArea,core:RES.coreArea||0,gfa:g.gfa,use:R.USES[g.use].label,nsa:g.nsa,count:g.layout?`${g.apts} apts (${g.layout.units.length}/floor)`:g.apts?`≈ ${g.apts} apts`:g.spaces?`≈ ${g.spaces} cars`:"",mix:g.layout?AP.mixText(AP.counts(g.layout.units),P.apt.types):""}));
+  if(RES.park&&RES.park.nBase){const pk=RES.park;rows.push({name:"Basements",levels:`B1${pk.nBase>1?"–B"+pk.nBase:""}`,floors:pk.nBase,ftf:+P.park.bFtf,top:0,plate:pk.levels.find(l=>l.kind==="basement")?shapeArea(pk.levels.find(l=>l.kind==="basement").outline):0,core:RES.coreArea||0,gfa:0,use:"Car park (below ground)",nsa:0,count:`${pk.basements.reduce((m,l)=>m+l.bays,0)} cars`,mix:""})}
+  for(const r of rows){const g=RES.groups.find(x=>x.name===r.name&&x.use==="carpark");if(g&&RES.park){const n=RES.park.podium.filter(l=>l.name.startsWith(g.name)).reduce((m,l)=>m+l.bays,0);r.count=`${n} cars`}}
   return rows;
 }
 function renderSched(){
@@ -259,8 +264,9 @@ function saveCSV(){
 const cv=$("#view");
 function canvasSize(){const r=cv.getBoundingClientRect(),dpr=window.devicePixelRatio||1;const W=Math.max(10,r.width),H=Math.max(10,r.height);if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}return {W,H,dpr}}
 function hexA(col,a){const m=/^#?([0-9a-f]{6})$/i.exec(col);if(!m)return col;const n=parseInt(m[1],16);return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`}
-function draw(){if(!RES)return;P.view==="3d"?draw3d():drawPlan();renderLegend()}
+function draw(){if(!RES)return;P.view==="3d"?draw3d():P.view==="park"?drawPark():drawPlan();renderLegend()}
 function renderLegend(){
+  if(P.view==="park"){$("#legend").innerHTML=`<span><i style="background:var(--surface)"></i>Car bay</span><span><i style="background:var(--aisle);border-color:var(--aisle)"></i>Aisle / accessway</span><span><i style="background:#1E292D"></i>Column</span><span><i style="background:#8E959A"></i>Core</span><span><i style="background:repeating-linear-gradient(135deg,var(--accent) 0 3px,transparent 3px 6px)"></i>Ramp</span>`;return}
   $("#legend").innerHTML=RES.groups.filter(g=>g.floors).map(g=>`<span><i style="background:${hexA(groupColor(g),0.45)};border-color:${groupColor(g)}"></i>${esc(g.name)}</span>`).join("")+
     `<span><i style="border:1.5px dashed var(--accent);background:transparent"></i>Envelope at ${P.ctl.height?"height limit":"top of building"}</span>`;
 }
@@ -396,6 +402,13 @@ function renderCores(){
     box.appendChild(d);
   });
 }
+/* grid centred on the typical tower floor unless set by hand */
+function centreGrid(){
+  if(P.grid.centre==="manual")return;
+  const gs=RES.groups.filter(g=>g.floors&&g.fp.length);if(!gs.length)return;
+  const t=typicalGroup()||gs.filter(g=>g.type==="tower").pop()||gs[gs.length-1];
+  const o=GR.centreOn(P,t.fp);if(o){P.grid.ox=o.ox;P.grid.oy=o.oy}
+}
 function snapInst(inst){if(!P.grid.snap)return;const s=GR.snap(P,inst,C.geom(inst));inst.x=s.x;inst.y=s.y}
 let libKey="";
 function renderCoreLib(){
@@ -446,7 +459,7 @@ function useCore(id){
 /* ---------- Grid ---------- */
 function renderGrid(){
   const g=P.grid,pk=P.park;
-  $("#gSx").value=g.sx;$("#gSy").value=g.sy;$("#gCol").value=g.col;$("#gSnap").checked=!!g.snap;
+  $("#gSx").value=g.sx;$("#gSy").value=g.sy;$("#gCol").value=g.col;$("#gSnap").checked=!!g.snap;$("#gCentre").value=g.centre||"auto";
   $("#gAng").value=g.angle==null?"":g.angle;$("#gAng").placeholder=fmt(((GR.angle(P)*180/Math.PI)%180+180)%180,1)+" (street)";
   $("#pW").value=pk.W;$("#pL").value=pk.L;$("#pA").value=pk.A;
   $("#perLift").value=P.coreRules.aptsPerLift;$("#travelLim").value=P.coreRules.travel;
@@ -530,6 +543,7 @@ function aptChecks(){
   if(L.left.length)out.push(["info",`${L.left.length} piece${L.left.length>1?"s":""} of facade strip (${fmt(L.left.reduce((m,u)=>m+u.area,0))} m²) too small for an apartment: storage, services or balcony.`]);
   if(L.narrow)out.push(["warn",`The ${g.name} plate is narrower than two apartments and a corridor: apartments cut to ${fmt(L.d,1)} m deep.`]);
   if(L.d>9.05)out.push(["warn",`Apartments ${fmt(L.d,1)} m deep: Clause 58 Standard D27 limits single-aspect habitable rooms to 9 m from a window (open-plan, 2.7 m ceiling).`]);
+  P.cores.forEach((inst,i)=>{const geo=C.geom(inst);if(geo&&L.corridor.length&&window.G.shapeArea(window.G.inter([window.G.offsetShape([geo.outline],0.3)[0]||geo.outline],L.corridor))<0.3)out.push(["warn",`Core C${i+1} doesn't reach the ${fmt(P.apt.corridor,1)} m corridor on ${g.name}. Move it next to the corridor.`])});
   const commonPct=L.common/L.plate*100;
   if(commonPct>28)out.push(["warn",`Corridors, cores and the middle of the plate take ${fmt(commonPct)}% of the ${g.name} floor. A deep plate wastes its middle: consider a courtyard, a slimmer tower or deeper apartments.`]);
   return out;
@@ -551,7 +565,7 @@ function renderBrief(){
   P.apt.types.forEach((t,i)=>{
     const tr=document.createElement("tr");
     tr.innerHTML=`<td><input type="text" data-k="name" value="${esc(t.name)}" aria-label="Type ${i+1} name" style="border-left:6px solid ${typeCol(t.name)}"></td>`+
-      ["min","target","max","width","mix"].map(k=>`<td><input type="number" data-k="${k}" step="${k==="width"?0.1:1}" min="0" value="${t[k]}" aria-label="${esc(t.name)} ${k}"></td>`).join("")+
+      ["beds","min","target","max","width","mix"].map(k=>`<td><input type="number" data-k="${k}" step="${k==="width"?0.1:1}" min="0" value="${t[k]}" aria-label="${esc(t.name)} ${k}"></td>`).join("")+
       `<td>${P.apt.types.length>1?`<button class="x" type="button" aria-label="Remove ${esc(t.name)}">×</button>`:""}</td>`;
     tr.querySelectorAll("input").forEach(inp=>inp.addEventListener("input",()=>{const k=inp.dataset.k;t[k]=k==="name"?inp.value:Math.max(0,parseFloat(inp.value)||0);schedule()}));
     const x=tr.querySelector(".x");if(x)x.addEventListener("click",()=>{P.apt.types.splice(i,1);renderBrief();schedule()});
@@ -561,7 +575,7 @@ function renderBrief(){
 }
 function bindApts(){
   $("#addType").addEventListener("click",()=>{const last=P.apt.types[P.apt.types.length-1]||{min:60,target:70,max:80,width:7};
-    P.apt.types.push({name:`Type ${P.apt.types.length+1}`,min:Math.round(last.max+5),target:Math.round(last.max+15),max:Math.round(last.max+25),width:+(last.width+1.5).toFixed(1),mix:0});renderBrief();schedule()});
+    P.apt.types.push({name:`Type ${P.apt.types.length+1}`,beds:Math.min(4,(+last.beds||2)+1),min:Math.round(last.max+5),target:Math.round(last.max+15),max:Math.round(last.max+25),width:+(last.width+1.5).toFixed(1),mix:0});renderBrief();schedule()});
   $("#aReset").addEventListener("click",()=>{const g=typicalGroup();if(g)delete P.apt.edits[g.id];recompute()});
   const an=(id,k,min)=>$(id).addEventListener("input",e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=min){P.apt[k]=v;P.apt.edits={};schedule()}});
   an("#aDepth","depth",4);an("#aCorr","corridor",1);an("#aWall","wall",0.1);
@@ -572,6 +586,7 @@ function drawUnits(g,T,c){
   const gr=typicalGroup();if(!gr||!gr.layout)return;const L=gr.layout;
   // common area (corridors and the middle of the plate) under the apartments
   for(const r of L.inner){path(g,T,r);g.fillStyle=hexA("#8E959A",0.12);g.fill()}
+  g.beginPath();for(const r of L.corridor)r.forEach((p,i)=>{const q=T(p);i?g.lineTo(q.x,q.y):g.moveTo(q.x,q.y)}),g.closePath();g.fillStyle=hexA("#E2B007",0.18);g.fill("evenodd");
   g.font=`600 11px "Barlow",sans-serif`;g.textAlign="center";g.textBaseline="middle";
   const rpath=rs=>{g.beginPath();for(const r of rs)r.forEach((p,i)=>{const q=T(p);i?g.lineTo(q.x,q.y):g.moveTo(q.x,q.y)}),g.closePath()};
   for(const u of L.units){rpath(u.rings);g.fillStyle=typeCol(u.type);g.fill("evenodd");g.lineWidth=1;g.strokeStyle=c.ink;g.stroke()}
@@ -587,6 +602,87 @@ function drawHandles(g,T,c){
     handles.push({idx,ring:ct.ring,s:ct.s,x:q.x,y:q.y})});
 }
 function handleAt(x,y){let best=null;for(const h of handles){const d=Math.hypot(h.x-x,h.y-y);if(d<=8&&(!best||d<best.d))best={...h,d}}return best}
+
+/* ---------- Parking ---------- */
+let parkT=null,parkGen=0,parkDone=false,parkLevel=0;
+function parkSoon(){parkDone=false;const my=++parkGen;$("#parkState").textContent="laying out…";clearTimeout(parkT);
+  // first the levels, then (a moment later) what columns, cores and ramp cost
+  const show=()=>{RES.checks=RES.checks.filter(c=>!c.park);RES.checks.push(...parkChecks());renderSummary();renderSched();renderParkOut();draw()};
+  parkT=setTimeout(()=>{if(my!==parkGen||!RES)return;
+    const geos=P.cores.map(C.geom).filter(Boolean);
+    try{RES.park=PK.plan(P,RES,geos)}catch(e){console.error(e);RES.park=null}
+    if(my!==parkGen)return;
+    if(RES.park&&parkLevel>=RES.park.levels.length)parkLevel=0;
+    show();
+    const wantB=RES.park&&(RES.park.nBase||(P.park.basements!==0&&RES.park.req.total>RES.park.provided));
+    if(!wantB){parkDone=true;return}
+    setTimeout(()=>{if(my!==parkGen||!RES||!RES.park)return;
+      try{RES.park.cost=PK.costs(P,RES,geos,RES.park.perBasement)}catch(e){console.error(e)}
+      if(my!==parkGen)return;parkDone=true;show()},30);
+  },250)}
+function parkSummary(){const pk=RES.park;if(!pk)return parkDone?"–":"…";return `${pk.provided} / ${pk.req.total}`}
+function parkChecks(){
+  const pk=RES.park,out=[];if(!pk)return out;const r=pk.req,col=P.park.col,mark=c=>(c.park=true,c);
+  out.push(mark(pk.provided>=r.total?["ok",`${pk.provided} car spaces for ${r.total} required (Clause 52.06-5 Column ${col}).`]:["bad",`${pk.provided} car spaces for ${r.total} required: ${r.total-pk.provided} short (Clause 52.06-5 Column ${col}).`]));
+  out.push(mark(["info",`Required: ${r.res} resident (${r.one} one/two-bed, ${r.three} three-bed)${r.vis?`, ${r.vis} visitor`:""}${r.ret?`, ${r.ret} retail on ${fmt(r.retailNLA)} m²`:""}. Rounded down.`]));
+  if(pk.nBase)out.push(mark(["info",`${pk.nBase} basement${pk.nBase>1?"s":""} of ${pk.perBasement} spaces${P.park.basements==="auto"?" (as many as the requirement needs)":""}.`]));
+  if(P.park.basements==="auto"&&pk.provided<r.total&&pk.nBase>=(+P.park.maxBase||6))out.push(mark(["warn",`Even ${pk.nBase} basements fall short. Reduce the apartment count, use Column B if the site is in the PPTN area, or seek a reduction under Clause 52.06-7.`]));
+  if(!pk.ramp&&(P.park.basements!=="0"))out.push(mark(["warn","No room for a ramp along the street edge: check the basement setback and the cores near the street."]));
+  const co=pk.cost;
+  if(co&&!pk.perBasement&&pk.ramp)out.push(mark(["warn",`No basement layout fits around the cores and columns from this ramp. Without the columns a basement takes ${co.noCols}, without the cores ${co.noCores}, open with a street crossover ${co.open}. Move or merge the cores, change the grid, or widen the basement.`]));
+  if(co&&pk.perBasement){const parts=[];
+    if(co.noCols>pk.perBasement)parts.push(`the ${P.grid.sx} × ${P.grid.sy} m columns ${co.noCols-pk.perBasement}`);
+    if(co.noCores>pk.perBasement)parts.push(`the core${P.cores.length>1?"s":""} ${co.noCores-pk.perBasement}`);
+    if(co.open>pk.perBasement)parts.push(`all of that plus the ramp ${co.open-pk.perBasement} (an open level with a street crossover takes ${co.open})`);
+    if(parts.length)out.push(mark(["info",`A basement holds ${pk.perBasement} spaces. Spaces lost to ${parts.join("; to ")}. Grid spacings that suit the bays: Step 5; cores near the edge cost less than cores in the middle.`]))}
+  return out;
+}
+function parkLevelName(){const pk=RES&&RES.park;if(!pk||!pk.levels.length)return "no car park levels";return (pk.levels[Math.min(parkLevel,pk.levels.length-1)]||{}).name||""}
+function renderPark(){
+  const pk=P.park;$("#pCol").value=pk.col;$("#pBase").value=String(pk.basements);$("#pBSet").value=pk.bSet;$("#pBFtf").value=pk.bFtf;$("#pRampW").value=pk.rampW;$("#pGrade").value=pk.rampGrade;
+  const tb=$("#rateTable tbody");tb.innerHTML="";
+  const r=pk.rates[pk.col],tr=document.createElement("tr");
+  tr.innerHTML=`<td class="num">Column ${pk.col}</td>`+["one","three","visitor","retail"].map(k=>`<td><input type="number" step="0.1" min="0" data-k="${k}" value="${r[k]}" aria-label="${k} rate"></td>`).join("");
+  tr.querySelectorAll("input").forEach(inp=>inp.addEventListener("input",()=>{const v=parseFloat(inp.value);if(isFinite(v)&&v>=0){r[inp.dataset.k]=v;schedule()}}));
+  tb.appendChild(tr);
+}
+function renderParkOut(){
+  const box=$("#parkOut"),pk=RES&&RES.park;if(!box)return;
+  if(!pk){box.innerHTML=`<p class="hint">${parkDone?"No parking laid out.":"Laying out the car park levels…"}</p>`;$("#parkState").textContent="";return}
+  $("#parkState").textContent=`${pk.provided} / ${pk.req.total} spaces`;
+  box.innerHTML=`<div class="parkbig"><b>${pk.provided}</b><span>provided · ${pk.req.total} required${pk.provided>=pk.req.total?"":` · ${pk.req.total-pk.provided} short`}</span></div>`+
+    pk.levels.map((l,i)=>`<button type="button" class="lvl${i===parkLevel?" sel":""}" data-i="${i}"><b>${esc(l.name)}</b><em>${l.bays}</em></button>`).join("")||`<p class="hint">No car park levels: set basements, or a level group's use to Car park.</p>`;
+  box.querySelectorAll(".lvl").forEach(b=>b.addEventListener("click",()=>{parkLevel=+b.dataset.i;renderParkOut();window.__setView("park")}));
+}
+function bindPark(){
+  $("#pCol").addEventListener("change",e=>{P.park.col=e.target.value;renderPark();schedule()});
+  $("#pBase").addEventListener("change",e=>{P.park.basements=e.target.value==="auto"?"auto":+e.target.value;schedule()});
+  const pn=(id,k,min)=>$(id).addEventListener("input",e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=min){P.park[k]=v;schedule()}});
+  pn("#pBSet","bSet",0);pn("#pBFtf","bFtf",2.4);pn("#pRampW","rampW",3);pn("#pGrade","rampGrade",4);
+}
+function drawPark(){
+  const {W,H,dpr}=canvasSize(),g=cv.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);
+  const c={bg:css("--surface"),ink:css("--ink"),muted:css("--muted"),site:css("--site"),sunk:css("--sunk"),accent:css("--accent"),aisle:"#C3CCC6"};
+  g.fillStyle=c.sunk;g.fillRect(0,0,W,H);
+  const pts=P.site.pts,bb=bbox(pts),pad=40,k=Math.min((W-2*pad)/Math.max(1,bb.x1-bb.x0),(H-2*pad)/Math.max(1,bb.y1-bb.y0));
+  const ox=(W-(bb.x1-bb.x0)*k)/2-bb.x0*k,oy=(H+(bb.y1-bb.y0)*k)/2+bb.y0*k,T=p=>({x:ox+p.x*k,y:oy-p.y*k});
+  planT=null;
+  path(g,T,pts);g.lineWidth=1.5;g.strokeStyle=c.site;g.stroke();
+  const pk=RES.park;
+  g.font=`500 12px "IBM Plex Mono",monospace`;g.fillStyle=c.muted;g.textAlign="left";g.textBaseline="alphabetic";
+  if(!pk||!pk.levels.length){g.fillText(parkDone?"No car park levels. Set basements or a car park level group under Step 7.":"Laying out the car park levels…",16,H-16);return}
+  const L=pk.levels[Math.min(parkLevel,pk.levels.length-1)];
+  for(const r of L.outline){path(g,T,r);g.fillStyle=c.bg;g.fill();g.lineWidth=1.2;g.strokeStyle=c.ink;g.stroke()}
+  const lay=L.layout;
+  if(lay){g.fillStyle=c.aisle;for(const a of lay.aisles){path(g,T,a.pts);g.fill()}for(const s of lay.spines){path(g,T,s);g.fill()}path(g,T,lay.stub);g.fill();
+    let n=0;g.font=`500 ${Math.max(7,Math.min(10,k*0.8))}px "IBM Plex Mono",monospace`;g.textAlign="center";g.textBaseline="middle";
+    for(const b of lay.bays){path(g,T,b.pts);g.fillStyle=b.kind==="acc"?css("--access"):c.bg;g.fill();g.lineWidth=0.8;g.strokeStyle=c.ink;g.stroke();if(b.kind!=="shared"&&k>5){n++;const q=T(window.G.centroid(b.pts));g.fillStyle=c.muted;g.fillText(n,q.x,q.y)}}}
+  for(const o of L.obstacles){const big=Math.abs(area(o))>2;path(g,T,o);g.fillStyle=big?"#8E959A":"#1E292D";g.fill()}
+  if(L.ramp){path(g,T,L.ramp.poly);g.fillStyle=hexA("#E2B007",0.35);g.fill();g.lineWidth=1.5;g.strokeStyle=c.ink;g.stroke();
+    const q=T(window.G.centroid(L.ramp.poly));g.font=`600 11px "Barlow",sans-serif`;g.fillStyle=c.ink;g.textAlign="center";g.fillText(L.kind==="basement"?"RAMP":"RAMP",q.x,q.y)}
+  g.font=`500 12px "IBM Plex Mono",monospace`;g.fillStyle=c.ink;g.textAlign="left";g.textBaseline="alphabetic";
+  g.fillText(`${L.name}: ${L.bays} spaces · ${pk.provided} provided / ${pk.req.total} required`,16,H-16);
+}
 
 /* ---------- Map + saved lots ---------- */
 function readSites(){try{return JSON.parse(localStorage.getItem(SITES_KEY)||"[]")}catch(e){return []}}
@@ -656,8 +752,10 @@ function bind(){
   $("#addTower").addEventListener("click",()=>{const n=P.stack.filter(g=>g.type==="tower").length;
     P.stack.push({id:nid(),type:"tower",name:`Tower typical ${String.fromCharCode(65+n)}`,floors:1,ftf:3.1,use:"apartments"});renderStack();schedule()});
   $("#maxOut").addEventListener("click",()=>{fillToLimits(false);renderStack();recompute()});
-  const setView=v=>{P.view=v;$("#vPlan").classList.toggle("on",v==="plan");$("#v3d").classList.toggle("on",v==="3d");$("#vPlan").setAttribute("aria-pressed",v==="plan");$("#v3d").setAttribute("aria-pressed",v==="3d");$("#rot").hidden=v!=="3d";$("#viewTitle").textContent=v==="3d"?"Massing":"Plan";draw();save()};
-  $("#vPlan").addEventListener("click",()=>setView("plan"));$("#v3d").addEventListener("click",()=>setView("3d"));
+  const setView=v=>{P.view=v;for(const [id,k] of [["#vPlan","plan"],["#vPark","park"],["#v3d","3d"]]){$(id).classList.toggle("on",v===k);$(id).setAttribute("aria-pressed",v===k)}
+    $("#rot").hidden=v!=="3d";$("#viewTitle").textContent=v==="3d"?"Massing":v==="park"?`Parking · ${parkLevelName()}`:"Plan";draw();save()};
+  window.__setView=setView;
+  $("#vPlan").addEventListener("click",()=>setView("plan"));$("#v3d").addEventListener("click",()=>setView("3d"));$("#vPark").addEventListener("click",()=>setView("park"));
   $("#rot").addEventListener("click",()=>{P.rot=((P.rot||0)+1)%4;draw();save()});
   setView(P.view||"plan");
   $("#csvBtn").addEventListener("click",saveCSV);
@@ -689,13 +787,14 @@ function bind(){
   $("#coreSuit").addEventListener("change",e=>{P.coreView.suit=e.target.checked;renderCoreLib();save()});
   $("#perLift").addEventListener("input",e=>{P.coreRules.aptsPerLift=Math.max(10,parseFloat(e.target.value)||60);schedule()});
   $("#travelLim").addEventListener("input",e=>{P.coreRules.travel=Math.max(1,parseFloat(e.target.value)||6);schedule()});
-  bindApts();
+  bindApts();bindPark();
   const gnum=(id,obj,k,min)=>$(id).addEventListener("input",e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=min){obj()[k]=v;schedule()}});
   gnum("#gSx",()=>P.grid,"sx",3);gnum("#gSy",()=>P.grid,"sy",3);gnum("#gCol",()=>P.grid,"col",0.2);
   gnum("#pW",()=>P.park,"W",2);gnum("#pL",()=>P.park,"L",4);gnum("#pA",()=>P.park,"A",3);
   $("#gAng").addEventListener("input",e=>{const v=parseFloat(e.target.value);P.grid.angle=isFinite(v)?v:null;schedule()});
   $("#gSnap").addEventListener("change",e=>{P.grid.snap=e.target.checked;if(P.grid.snap)P.cores.forEach(snapInst);schedule()});
-  $("#gAlign").addEventListener("click",()=>{const inst=P.cores[P.coreSel];if(!inst)return;const geo=C.geom(inst),F=GR.frame(P);
+  $("#gCentre").addEventListener("change",e=>{P.grid.centre=e.target.value;centreGrid();P.cores.forEach(snapInst);recompute()});
+  $("#gAlign").addEventListener("click",()=>{const inst=P.cores[P.coreSel];if(!inst)return;const geo=C.geom(inst),F=GR.frame(P);P.grid.centre="manual";$("#gCentre").value="manual";
     const us=geo.outline.map(p=>F.toG(p));const o=F.toW(Math.min(...us.map(q=>q.u)),Math.min(...us.map(q=>q.v)));P.grid.ox=o.x;P.grid.oy=o.y;
     const t=GR.angle(P)*180/Math.PI;P.cores.forEach(c=>{if(Math.abs(((c.rot-t)%90+90)%90)>0.5&&Math.abs(((c.rot-t)%90+90)%90-90)>0.5)c.rot=t});
     renderGrid();recompute()});
@@ -735,5 +834,5 @@ if(mapOK&&P.site.ring)VM.goToRing(P.site.ring,P.site.address);
 renderSites();
 
 /* test hook */
-window.__fz={get P(){return P},get R(){return RES},get max(){return MAX},loadSite,setPlanning:r=>{setPlanning(r);renderPlanning()},recompute,fill:()=>{fillToLimits(false);renderStack();recompute()},set:(fn)=>{fn(P);renderAll()},cores:C,grid:GR,apts:AP,typ:()=>typLayout(),editCuts,ready:()=>coresReady};
+window.__fz={get P(){return P},get R(){return RES},get max(){return MAX},loadSite,setPlanning:r=>{setPlanning(r);renderPlanning()},recompute,fill:()=>{fillToLimits(false);renderStack();recompute()},set:(fn)=>{fn(P);renderAll()},park:()=>RES&&RES.park,parkDone:()=>parkDone,cores:C,grid:GR,apts:AP,typ:()=>typLayout(),editCuts,ready:()=>coresReady};
 })();

@@ -10,8 +10,8 @@ const {area,bbox,centroid,diff,inter,union,shapeArea,offsetShape,D2R}=window.G;
 const STEP=0.4,EXT=1.5;
 
 function defaults(){return {depth:9,corridor:1.6,wall:0.2,snap:"prefer",typical:null,edits:{},
-  types:[{name:"Studio",min:32,target:38,max:44,width:3.6,mix:0},{name:"1B",min:48,target:52,max:58,width:5.6,mix:40},
-         {name:"2B",min:68,target:75,max:82,width:7.6,mix:45},{name:"3B",min:92,target:100,max:110,width:9.6,mix:15}]}}
+  types:[{name:"Studio",beds:0,min:32,target:38,max:44,width:3.6,mix:0},{name:"1B",beds:1,min:48,target:52,max:58,width:5.6,mix:40},
+         {name:"2B",beds:2,min:68,target:75,max:82,width:7.6,mix:45},{name:"3B",beds:3,min:92,target:100,max:110,width:9.6,mix:15}]}}
 
 /* deepest inset that still leaves floor: half the plate's widest width */
 function maxInset(fp){let lo=0,hi=40;for(let k=0;k<14;k++){const m=(lo+hi)/2;if(offsetShape(fp,-m).length)lo=m;else hi=m}return lo}
@@ -178,9 +178,11 @@ function layoutPlate(P,fp,cores,edits){
     if(innerRings){let bd=1e9;for(const rg of inner)for(let i=0;i<rg.length;i++){const p=rg[i],q=rg[(i+1)%rg.length],dx=q.x-p.x,dy=q.y-p.y,l=dx*dx+dy*dy||1e-9,t=Math.max(0,Math.min(1,((c.x-p.x)*dx+(c.y-p.y)*dy)/l)),x={x:p.x+t*dx,y:p.y+t*dy},dd=Math.hypot(x.x-c.x,x.y-c.y);if(dd<bd){bd=dd;door=x}}}
     units.push({poly:pc,rings,area:a,type:near?near.name:"Oversize",ok:!!fit,door,width:a/d});
   }
+  // corridor: a band of corridor width just inside the apartments (where the doors are)
+  const corridor=inner.length?diff(inner,offsetShape(fp,-(d+cw))):[];
   const plate=shapeArea(fp),nsa=units.reduce((m,u)=>m+u.area,0);
   const common=Math.max(0,plate-nsa-left.reduce((m,u)=>m+u.area,0));
-  return {d,narrow,inner,strip,units,left,cuts:allCuts,loops:loops.map(l=>({perim:l.R.perim,edges:l.R.edges,convex:l.R.convex})),plate,nsa,common,eff:nsa/plate};
+  return {d,narrow,inner,corridor,strip,units,left,cuts:allCuts,loops:loops.map(l=>({perim:l.R.perim,edges:l.R.edges,convex:l.R.convex})),plate,nsa,common,eff:nsa/plate};
 }
 
 function counts(units){const c={};for(const u of units)c[u.type]=(c[u.type]||0)+1;return c}
