@@ -1,9 +1,9 @@
-/* Bayline Feasibility: site -> planning controls -> envelope -> level stack. */
+/* Bayline Feasibility: site -> planning controls -> envelope -> level stack -> core -> grid. */
 (function(){
 "use strict";
 const $=s=>document.querySelector(s);
 const {area,bbox,inward,shapeArea,projectRing}=window.G;
-const R=window.RULES,E=window.ENV;
+const R=window.RULES,E=window.ENV,C=window.CORES,GR=window.GRID;
 const fmt=(v,d=0)=>(v==null||!isFinite(v))?"–":(+v).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -21,10 +21,20 @@ function defaultStack(key,ctl){
 function ctlFromPreset(ctl,key){const p=R.PRESETS[key];ctl.preset=key;ctl.bands=clone(p.bands);ctl.rescode=p.rescode;return ctl}
 function defaultProject(){
   const ctl=ctlFromPreset({height:22,storeys:null,far:null,coverage:null,garden:null,roof:1,excludeCarpark:true},"podiumTower");
-  return {v:1,site:exampleSite(),zone:{key:"",code:"",desc:"",sched:"",auto:false},overlays:[],planning:"none",ctl,stack:defaultStack("MUZ"),aptSize:68,effApt:78,spaceArea:30,view:"plan",rot:0,sel:null};
+  return ensure({v:1,site:exampleSite(),zone:{key:"",code:"",desc:"",sched:"",auto:false},overlays:[],planning:"none",ctl,stack:defaultStack("MUZ"),aptSize:68,effApt:78,spaceArea:30,view:"plan",rot:0,sel:null});
 }
+/* fields added after phase 1; fills them in on older saved projects */
+function ensure(o){
+  o.cores=o.cores||[];if(o.coreAuto==null)o.coreAuto=true;o.coreSel=o.coreSel||0;
+  o.grid={sx:8.4,sy:8.4,angle:null,ox:0,oy:0,col:0.6,snap:true,...(o.grid||{})};
+  o.park={W:2.6,L:4.9,A:6.4,...(o.park||{})};
+  o.coreRules={aptsPerLift:60,aptDepth:9,travel:6,exitsApart:45,...(o.coreRules||{})};
+  o.coreView={cat:"all",suit:true,...(o.coreView||{})};
+  return o;
+}
+function gridOrigin(site){const a=site.pts[Math.min(site.front||0,site.pts.length-1)];return {ox:a.x,oy:a.y}}
 function load(){try{const o=JSON.parse(localStorage.getItem(KEY)||"null");if(o&&o.v===1&&o.site&&o.site.pts&&o.stack)return o}catch(e){}return null}
-const saved=load();let P=saved||defaultProject();
+const saved=load();let P=saved?ensure(saved):defaultProject();
 let saveT=null;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(P))}catch(e){}},200)}
 
 function applyEff(){for(const g of P.stack)g.eff=g.use==="apartments"?P.effApt/100:undefined}
@@ -36,7 +46,7 @@ function siteFromDoc(doc){
   return {id:doc.id||"site",address:doc.address||"",spi:doc.spi||"",ring:doc.ring,pts,front,roads:doc.roads||[],edges:E.classifyEdges(pts,front,doc.roads||[])};
 }
 function loadSite(doc,opts={}){
-  P.site=siteFromDoc(doc);P.sel=null;
+  P.site=siteFromDoc(doc);P.sel=null;P.cores=[];P.coreSel=0;P.coreAuto=true;Object.assign(P.grid,gridOrigin(P.site),{angle:null});
   P.zone={key:"",code:"",desc:"",sched:"",auto:false};P.overlays=[];
   renderAll();
   if(opts.planning!==false)lookupPlanning();
@@ -59,7 +69,7 @@ function resetForZone(key){
   const z=R.ZONES[key];const siteArea=Math.abs(area(P.site.pts));
   const ctl=ctlFromPreset({height:z?z.height:null,storeys:z?z.storeys:null,far:null,coverage:z&&z.preset==="rescode"?60:null,garden:z&&z.garden?(R.gardenMin(siteArea)||null):null,roof:P.ctl.roof!=null?P.ctl.roof:1,excludeCarpark:P.ctl.excludeCarpark!==false},z?z.preset:"podiumTower");
   if(!z&&P.ctl.height)ctl.height=P.ctl.height;
-  P.ctl=ctl;P.stack=defaultStack(key);$("#maxMsg").textContent="";
+  P.ctl=ctl;P.stack=defaultStack(key);$("#maxMsg").textContent="";P.cores=[];P.coreSel=0;P.coreAuto=true;
   fillToLimits(true);renderAll();
 }
 function fillToLimits(quiet){
@@ -75,17 +85,21 @@ function recompute(){
   applyEff();
   if(!window.ClipperLib){$("#summary").innerHTML=`<p class="hint">The geometry library didn't load. Check your connection and reload.</p>`;return}
   RES=E.compute(P);MAX=E.maxOut(P);
-  renderSummary();renderStackOut();renderSched();draw();save();
+  if(P.coreAuto&&!P.cores.length&&C.lib){const s=C.suggest(P,RES);P.coreAuto=false;if(s.length){P.cores=s;P.coreSel=0;renderCores()}}
+  RES.coreArea=P.cores.map(C.geom).filter(Boolean).reduce((m,g)=>m+g.area,0);
+  if(C.lib)RES.checks.push(...C.checks(P,RES,P.cores));
+  RES.checks.push(...gridChecks());
+  renderSummary();renderStackOut();renderSched();renderCoreNeed();renderGridFit();draw();save();
 }
 let rT=null;function schedule(){clearTimeout(rT);rT=setTimeout(recompute,60)}
 
-function renderAll(){renderSite();renderPlanning();renderControls();renderStack();recompute()}
+function renderAll(){renderSite();renderPlanning();renderControls();renderStack();renderCores();renderGrid();recompute()}
 
 /* site + edges */
 const EDGE_LABEL={street:"Street",side:"Side",rear:"Rear",lane:"Lane"};
 let hlEdge=-1;
 function renderSite(){
-  const s=P.site,n=s.pts.length,A=Math.abs(area(s.pts));
+  const s=P.site,n=s.pts.length,A=Math.abs(area(s.pts));s.perim=s.pts.reduce((m,p,i)=>m+Math.hypot(s.pts[(i+1)%n].x-p.x,s.pts[(i+1)%n].y-p.y),0);
   const nm=s.address||"Unnamed site";$("#siteName").textContent=nm===nm.toUpperCase()?VM.titleCase(nm):nm;
   $("#siteMeta").textContent=`${fmt(A)} m²${s.spi?" · "+s.spi:""}`;
   const tb=$("#edgeTable tbody");tb.innerHTML="";
@@ -195,7 +209,7 @@ function renderSummary(){
   const r=RES,c=P.ctl;
   const gov=MAX?(MAX.capped?"No height, storey or FAR limit stops the tower.":
     (()=>{const g=P.stack[MAX.group],d=MAX.floors-g.floors;const w=MAX.governs.map(x=>({height:"height",storeys:"storey limit",FAR:"floor area ratio",setbacks:"setbacks"}[x]||x)).join(" and ");
-      return d>0?`Room for ${d} more ${g.name} floor${d>1?"s":""} before the ${w} limit.`:d===0?`${w[0].toUpperCase()+w.slice(1)} governs: the stack is at the limit.`:`Over the limit: remove ${-d} ${g.name} floor${d<-1?"s":""} (${w}).`})()):"";
+      return d>0?`Room for ${d} more ${g.name} floor${d>1?"s":""} before the ${w} limit.`:d===0?`${w[0].toUpperCase()+w.slice(1)} ${MAX.governs.length>1?"govern":"governs"}: the stack is at the limit.`:`Over the limit: remove ${-d} ${g.name} floor${d<-1?"s":""} (${w}).`})()):"";
   const lim=(v,l,u="")=>l?`${v} <span style="color:var(--muted)">/ ${l}${u}</span>`:v;
   $("#summary").innerHTML=`
     <div><div class="cap">Gross floor area</div><div class="big"><b>${fmt(r.gfa)}</b><span>m²</span></div></div>
@@ -208,6 +222,7 @@ function renderSummary(){
       <dt>Net saleable area</dt><dd>${fmt(r.nsa)} m²</dd>
       <dt>Apartments</dt><dd>≈ ${fmt(r.apts)}</dd>
       ${r.spaces?`<dt>Car spaces (podium)</dt><dd>≈ ${fmt(r.spaces)}</dd>`:""}
+      <dt>Core per floor</dt><dd>${P.cores.length?`${fmt(r.coreArea)} m²`:"–"}</dd>
       <dt>Site coverage</dt><dd>${lim(fmt(r.coverage),c.coverage,"%")}${c.coverage?"":"%"}</dd>
       <dt>Open area</dt><dd>${fmt(r.garden)}%</dd>
     </dl>
@@ -216,22 +231,22 @@ function renderSummary(){
 
 /* area schedule */
 function schedRows(){
-  const rows=RES.groups.slice().reverse().filter(g=>g.floors).map(g=>({name:g.name,levels:lvl(g.storeyFrom)+(g.floors>1?"–"+lvl(g.storeyTo):""),floors:g.floors,ftf:g.ftf,top:g.z1,plate:g.fpArea,gfa:g.gfa,use:R.USES[g.use].label,nsa:g.nsa,count:g.apts?`≈ ${g.apts} apts`:g.spaces?`≈ ${g.spaces} cars`:""}));
+  const rows=RES.groups.slice().reverse().filter(g=>g.floors).map(g=>({name:g.name,levels:lvl(g.storeyFrom)+(g.floors>1?"–"+lvl(g.storeyTo):""),floors:g.floors,ftf:g.ftf,top:g.z1,plate:g.fpArea,core:RES.coreArea||0,gfa:g.gfa,use:R.USES[g.use].label,nsa:g.nsa,count:g.apts?`≈ ${g.apts} apts`:g.spaces?`≈ ${g.spaces} cars`:""}));
   return rows;
 }
 function renderSched(){
   if(!RES)return;
   const rows=schedRows();
   $("#schedNote").textContent=`${RES.storeys} storeys · ${fmt(RES.height,1)} m`;
-  $("#sched").innerHTML=`<thead><tr><th>Group</th><th>Levels</th><th>Floors</th><th>F–F m</th><th>Top m</th><th>Plate m²</th><th>GFA m²</th><th>Use</th><th>NSA m²</th><th>Count</th></tr></thead><tbody>`+
-    rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.levels}</td><td>${r.floors}</td><td>${fmt(r.ftf,2)}</td><td>${fmt(r.top,1)}</td><td>${fmt(r.plate)}</td><td>${fmt(r.gfa)}</td><td style="font-family:var(--f-body)">${r.use}</td><td>${fmt(r.nsa)}</td><td>${r.count}</td></tr>`).join("")+
-    `<tr class="tot"><td>Total</td><td></td><td>${RES.storeys}</td><td></td><td>${fmt(RES.height,1)}</td><td></td><td>${fmt(RES.gfa)}</td><td></td><td>${fmt(RES.nsa)}</td><td>${RES.apts?`≈ ${RES.apts} apts`:""}</td></tr></tbody>`;
+  $("#sched").innerHTML=`<thead><tr><th>Group</th><th>Levels</th><th>Floors</th><th>F–F m</th><th>Top m</th><th>Plate m²</th><th>Core m²</th><th>GFA m²</th><th>Use</th><th>NSA m²</th><th>Count</th></tr></thead><tbody>`+
+    rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.levels}</td><td>${r.floors}</td><td>${fmt(r.ftf,2)}</td><td>${fmt(r.top,1)}</td><td>${fmt(r.plate)}</td><td>${fmt(r.core)}</td><td>${fmt(r.gfa)}</td><td style="font-family:var(--f-body)">${r.use}</td><td>${fmt(r.nsa)}</td><td>${r.count}</td></tr>`).join("")+
+    `<tr class="tot"><td>Total</td><td></td><td>${RES.storeys}</td><td></td><td>${fmt(RES.height,1)}</td><td></td><td></td><td>${fmt(RES.gfa)}</td><td></td><td>${fmt(RES.nsa)}</td><td>${RES.apts?`≈ ${RES.apts} apts`:""}</td></tr></tbody>`;
 }
 function saveCSV(){
   const rows=schedRows();const q=v=>`"${String(v).replace(/"/g,'""')}"`;
-  const lines=[["Site",P.site.address],["Zone",P.zone.code||P.zone.key],["Site area m2",Math.round(RES.siteArea)],[],["Group","Levels","Floors","Floor to floor m","Top m","Floorplate m2","GFA m2","Use","NSA m2","Count"],
-    ...rows.map(r=>[r.name,r.levels,r.floors,r.ftf,r.top.toFixed(1),Math.round(r.plate),Math.round(r.gfa),r.use,Math.round(r.nsa),r.count]),
-    ["Total","",RES.storeys,"",RES.height.toFixed(1),"",Math.round(RES.gfa),"",Math.round(RES.nsa),RES.apts]];
+  const lines=[["Site",P.site.address],["Zone",P.zone.code||P.zone.key],["Site area m2",Math.round(RES.siteArea)],["Cores",P.cores.map(c=>c.core+(c.variant?" ("+c.variant+")":"")).join(" + ")||"none"],["Grid m",`${P.grid.sx} x ${P.grid.sy}`],[],["Group","Levels","Floors","Floor to floor m","Top m","Floorplate m2","Core m2 per floor","GFA m2","Use","NSA m2","Count"],
+    ...rows.map(r=>[r.name,r.levels,r.floors,r.ftf,r.top.toFixed(1),Math.round(r.plate),Math.round(r.core),Math.round(r.gfa),r.use,Math.round(r.nsa),r.count]),
+    ["Total","",RES.storeys,"",RES.height.toFixed(1),"","",Math.round(RES.gfa),"",Math.round(RES.nsa),RES.apts]];
   const blob=new Blob([lines.map(l=>l.map(q).join(",")).join("\n")],{type:"text/csv"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`feasibility-${(P.site.address||"site").replace(/[^A-Za-z0-9]+/g,"-").toLowerCase()}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
 }
@@ -257,6 +272,7 @@ function drawPlan(){
   const k=Math.min((W-2*pad)/Math.max(1,bb.x1-bb.x0),(H-2*pad)/Math.max(1,bb.y1-bb.y0));
   const ox=(W-(bb.x1-bb.x0)*k)/2-bb.x0*k,oy=(H+(bb.y1-bb.y0)*k)/2+bb.y0*k;
   const T=p=>({x:ox+p.x*k,y:oy-p.y*k});
+  planT={inv:(x,y)=>({x:(x-ox)/k,y:(oy-y)/k}),k};
   path(g,T,pts);g.fillStyle=c.sunk;g.fill();
   // envelope slices (dashed)
   g.save();g.setLineDash([6,5]);g.lineWidth=1.2;g.strokeStyle=c.accent;
@@ -267,6 +283,9 @@ function drawPlan(){
     if(!gr.floors)continue;const col=groupColor(gr),sel=P.sel===gr.id;
     for(const r of gr.fp){path(g,T,r);g.fillStyle=hexA(col,sel?0.5:0.16);g.fill();g.lineWidth=sel?2.4:1.4;g.strokeStyle=col;g.stroke()}
   }
+  drawGrid(g,T,c);
+  const ccol={...c,lift:css("--rule"),stair:c.bg,riser:hexA("#8E959A",0.55),lobby:c.sunk};
+  P.cores.forEach((inst,i)=>{const geo=C.geom(inst);if(geo)C.draw(g,T,geo,ccol,i,i===P.coreSel)});
   // boundary, edges by type
   const n=pts.length,sg=Math.sign(area(pts))||1;
   g.font=`500 11px "IBM Plex Mono",monospace`;g.textAlign="center";g.textBaseline="middle";
@@ -274,7 +293,7 @@ function drawPlan(){
     const a=pts[i],b=pts[(i+1)%n],t=P.site.edges[i];
     const A=T(a),B=T(b);g.beginPath();g.moveTo(A.x,A.y);g.lineTo(B.x,B.y);
     g.lineWidth=i===hlEdge?6:t==="street"?4.5:2;g.strokeStyle=i===hlEdge?c.accent:t==="street"?c.ink:c.site;g.stroke();
-    const L=Math.hypot(b.x-a.x,b.y-a.y);if(L<4&&i!==hlEdge)continue;
+    const L=Math.hypot(b.x-a.x,b.y-a.y);if(i!==hlEdge&&(L<4||(n>8&&L<Math.max(10,P.site.perim/n*1.2)&&t!=="street")))continue;
     const nw=inward(pts,i,sg),m={x:(a.x+b.x)/2-nw.x*16/k,y:(a.y+b.y)/2-nw.y*16/k},q=T(m);
     const sb=E.setbackAt(P.ctl,t,0.1);
     const txt=`${i+1} ${EDGE_LABEL[t].toUpperCase()} · ${L.toFixed(1)} m${sb?` · ${sb.toFixed(1)} m setback`:""}`;
@@ -327,10 +346,136 @@ function draw3d(){
     }
     for(const r of rings){poly(r,gr.z1);g.fillStyle=shadeCol(col,1.08,sel);g.fill();g.lineWidth=1;g.strokeStyle=hexA("#1E292D",0.6);g.stroke()}
   }
+  // cores show as plant/lift-overrun boxes on the roof
+  const roofZ=Math.max(0,...RES.groups.filter(x=>x.floors).map(x=>x.z1));
+  const coreGeos=P.cores.map(C.geom).filter(Boolean).sort((a,b)=>V(window.G.centroid(b.outline))-V(window.G.centroid(a.outline)));
+  for(const geo of coreGeos){const r=geo.outline,z0=roofZ,z1=roofZ+3;
+    const ws=[];for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length],L=Math.hypot(b.x-a.x,b.y-a.y),nx=(b.y-a.y)/L,ny=-(b.x-a.x)/L;if(nx*sa+ny*ca<0)ws.push({a,b,d:(V(a)+V(b))/2})}
+    ws.sort((p,q)=>q.d-p.d);
+    for(const w of ws){const A0=T(w.a,z0),B0=T(w.b,z0),B1=T(w.b,z1),A1=T(w.a,z1);g.beginPath();g.moveTo(A0.x,A0.y);g.lineTo(B0.x,B0.y);g.lineTo(B1.x,B1.y);g.lineTo(A1.x,A1.y);g.closePath();g.fillStyle="#5F676B";g.fill();g.lineWidth=0.8;g.strokeStyle="#1E292D";g.stroke()}
+    poly(r,z1);g.fillStyle="#7D868A";g.fill();g.strokeStyle="#1E292D";g.stroke()}
   g.font=`500 11px "IBM Plex Mono",monospace`;g.fillStyle=c.muted;g.textAlign="left";g.textBaseline="alphabetic";
   g.fillText(`${fmt(RES.height,1)} m · ${RES.storeys} storeys${P.ctl.height?` · limit ${fmt(P.ctl.height,1)} m`:""}`,14,H-14);
 }
 function shadeCol(hex,f,sel){const m=/^#?([0-9a-f]{6})$/i.exec(hex);const n=parseInt(m[1],16);const ch=v=>Math.max(0,Math.min(255,Math.round(v*f)));return `rgba(${ch(n>>16&255)},${ch(n>>8&255)},${ch(n&255)},${sel?1:0.94})`}
+
+/* ---------- Cores ---------- */
+let coresReady=false;
+function renderCoreNeed(){
+  if(!RES)return;const n=C.needs(P,RES);
+  $("#coreNeed").textContent=`needs ${n.stairs} exit${n.stairs>1?"s":""}, ${n.lifts} lift${n.lifts===1?"":"s"} · ${fmt(n.eh,1)} m eff. height`;
+  renderCoreLib();
+}
+function coreDesc(c){return `${c.lifts} lift${c.lifts===1?"":"s"} · ${c.stairs===2?(c.stair==="scissor"?"scissor stair":"2 stairs"):c.stairs?"1 stair":"no stair"} · ${(c.w/1000).toFixed(2)} × ${(c.d/1000).toFixed(2)} m`}
+function renderCores(){
+  const box=$("#placed");box.innerHTML="";
+  if(!C.lib){box.innerHTML=`<p class="hint">Loading core library…</p>`;return}
+  if(!P.cores.length)box.innerHTML=`<p class="hint">No core placed. Use "Suggest a core" or pick one from the library.</p>`;
+  P.cores.forEach((inst,i)=>{
+    const c=C.spec(inst);if(!c)return;const base=C.byId(inst.core);
+    const d=document.createElement("div");d.className="slot"+(i===P.coreSel?" sel":"");
+    d.innerHTML=`<b>C${i+1} · ${esc(inst.core)} ${esc(C.label(c))}</b><small>${coreDesc(c)}</small>
+      <div class="tools"><button type="button" data-a="rot" title="Rotate 90°" aria-label="Rotate core ${i+1}">⟳</button><button type="button" data-a="fx" title="Flip left–right" aria-label="Flip core ${i+1} left to right">⇋</button><button type="button" data-a="fy" title="Flip front–back" aria-label="Flip core ${i+1} front to back">⇅</button><button type="button" data-a="del" title="Remove" aria-label="Remove core ${i+1}">×</button>
+      ${base.variants?Object.keys(base.variants).map(v=>`<label><input type="checkbox" data-v="${esc(v)}"${inst.variant===v?" checked":""}>${esc(v.replace(/ on$/,""))}</label>`).join(""):""}</div>`;
+    d.addEventListener("click",e=>{
+      const a=e.target.closest("[data-a]");P.coreSel=i;
+      if(a){const k=a.dataset.a;
+        if(k==="del"){P.cores.splice(i,1);P.coreSel=Math.max(0,Math.min(P.coreSel,P.cores.length-1))}
+        else if(k==="rot"){inst.rot=((inst.rot||0)+90)%360;snapInst(inst)}
+        else inst[k]=!inst[k];
+      }
+      const v=e.target.closest("[data-v]");if(v){inst.variant=v.checked?v.dataset.v:null;snapInst(inst)}
+      renderCores();recompute();
+    });
+    box.appendChild(d);
+  });
+}
+function snapInst(inst){if(!P.grid.snap)return;const s=GR.snap(P,inst,C.geom(inst));inst.x=s.x;inst.y=s.y}
+let libKey="";
+function renderCoreLib(){
+  if(!C.lib||!RES)return;
+  const n=C.needs(P,RES),cat=P.coreView.cat,suit=P.coreView.suit;
+  const key=JSON.stringify([n,cat,suit,P.cores.map(c=>c.core+c.variant),P.coreSel]);if(key===libKey)return;libKey=key;
+  const box=$("#coreLib");box.innerHTML="";
+  const sel=P.cores[P.coreSel];
+  // with several cores each one only needs its share: 1 stair, and the lifts split between them
+  const k=Math.max(1,P.cores.length),ok=c=>c.stairs>=(k>1?1:n.stairs)&&c.lifts>=Math.min(3,Math.ceil(n.lifts/k));
+  const order=["linear","deep","kit","lift","stair"];
+  for(const k of order){
+    if(cat!=="all"&&cat!==k)continue;
+    const list=C.lib.cores.filter(c=>c.cat===k&&(!suit||k==="lift"||k==="stair"||ok(c)||Object.values(c.variants||{}).some(v=>ok({...c,...v}))));
+    if(!list.length)continue;
+    const h=document.createElement("div");h.className="ccat";h.textContent=C.CATS[k];box.appendChild(h);
+    for(const c of list){
+      const b=document.createElement("button");b.type="button";b.setAttribute("role","listitem");
+      b.className="ccard"+(sel&&sel.core===c.id?" on":"")+(k!=="lift"&&k!=="stair"&&!ok(c)?" no":"");
+      b.title=c.family;
+      b.innerHTML=`<canvas></canvas><span><b>${c.id}</b><small>${esc(C.label(c))}<br>${coreDesc(c)}</small></span>`;
+      b.addEventListener("click",()=>useCore(c.id));
+      box.appendChild(b);
+      requestAnimationFrame(()=>thumb(b.querySelector("canvas"),c));
+    }
+  }
+  if(!box.children.length)box.innerHTML=`<p class="hint">No library core meets ${n.stairs} exits and ${n.lifts} lifts on its own. Untick the filter and combine lift and stair blocks, or add a second core.</p>`;
+}
+function thumb(cv2,c){
+  const r=cv2.getBoundingClientRect(),dpr=window.devicePixelRatio||1;if(!r.width)return;
+  cv2.width=Math.round(r.width*dpr);cv2.height=Math.round(r.height*dpr);
+  const g=cv2.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);
+  const k=Math.min((r.width-12)/20.5,(r.height-10)/8.2); // same scale for every core so sizes compare
+  const geo=C.geom({core:c.id,x:0,y:0,rot:0});
+  const T=p=>({x:r.width/2+p.x*k,y:r.height/2-p.y*k});
+  const col={bg:css("--surface"),ink:css("--ink"),muted:css("--muted"),accent:css("--accent"),lift:css("--rule"),stair:css("--surface"),riser:hexA("#8E959A",0.55),lobby:css("--sunk")};
+  C.draw(g,T,geo,col,null,false);
+}
+function useCore(id){
+  const cur=P.cores[P.coreSel];
+  let inst=cur?{...cur,core:id,variant:null}:{id:nid(),core:id,variant:null,x:0,y:0,rot:GR.angle(P)*180/Math.PI,fx:false,fy:false};
+  if(!cur||!C.fits(inst,RES)){const others=P.cores.filter((_,i)=>i!==P.coreSel);const p=C.place(P,RES,inst,others);if(p)inst=p;else if(!cur){const o=window.G.centroid(P.site.pts);inst.x=o.x;inst.y=o.y}}
+  else snapInst(inst);
+  if(cur)P.cores[P.coreSel]=inst;else{P.cores.push(inst);P.coreSel=P.cores.length-1}
+  renderCores();recompute();
+}
+
+/* ---------- Grid ---------- */
+function renderGrid(){
+  const g=P.grid,pk=P.park;
+  $("#gSx").value=g.sx;$("#gSy").value=g.sy;$("#gCol").value=g.col;$("#gSnap").checked=!!g.snap;
+  $("#gAng").value=g.angle==null?"":g.angle;$("#gAng").placeholder=fmt(((GR.angle(P)*180/Math.PI)%180+180)%180,1)+" (street)";
+  $("#pW").value=pk.W;$("#pL").value=pk.L;$("#pA").value=pk.A;
+  $("#perLift").value=P.coreRules.aptsPerLift;$("#aptDepth").value=P.coreRules.aptDepth;
+}
+function gridSpan(){const gs=RES.groups.filter(g=>g.floors&&g.fp.length);if(!gs.length)return 30;const b=bbox(gs.flatMap(g=>g.fp.flat()));return Math.hypot(b.x1-b.x0,b.y1-b.y0)}
+function goodAlong(c,span){const out=[];for(let s=6;s<=12.001;s+=0.1){const S=+s.toFixed(1);let ok=false;const M=2*c.L+c.A,n=Math.max(2,Math.floor(span/S)+1);for(let o=0;o<M&&!ok;o+=0.05){let h=0;for(let k=0;k<n;k++){const x=((o+k*S)%M+M)%M;if(x>c.L+0.05&&x<c.L+c.A-0.05){h++;break}}if(!h)ok=true}if(ok)out.push(S)}return out}
+function gridFit(){
+  const span=gridSpan(),f=GR.carpark(P,span),b=f.best,c=f.c;
+  const dirName=b.dir==="x"?"along the street":"across the site";const other=b.dir==="x"?"across the site":"along the street";
+  const goodAc=[2,3,4].map(n=>+(n*c.W+c.col).toFixed(2));
+  const al=goodAlong(c,span),near=al.sort((x,y)=>Math.abs(x-b.al.S)-Math.abs(y-b.al.S)).slice(0,4).sort((x,y)=>x-y);
+  return {b,c,lines:[
+    [b.ac.ok?"ok":b.ac.meh?"warn":"bad",`Bays run ${dirName}: ${fmt(b.ac.S,2)} m bay = ${b.ac.n} bay${b.ac.n===1?"":"s"} of ${c.W} m + ${c.col} m column, ${b.ac.spare.toFixed(2)} m spare.${b.ac.ok?"":` Spacings that fit whole bays: ${goodAc.join(", ")} m.`}`],
+    [b.al.ok?"ok":"warn",b.al.ok?`Spacing ${other} (${fmt(b.al.S,2)} m) keeps every column line out of the ${c.A} m aisles (bay + aisle + bay = ${fmt(b.al.M,1)} m).`:`Spacing ${other} (${fmt(b.al.S,2)} m): ${b.al.hits} of ${b.al.lines} column lines land in an aisle against the ${fmt(b.al.M,1)} m bay + aisle + bay module.${near.length?` Spacings that miss the aisles: ${near.join(", ")} m.`:""}`]]};
+}
+function gridChecks(){try{return gridFit().lines.map(([k,t])=>[k==="bad"?"warn":k,"Grid: "+t])}catch(e){return []}}
+function renderGridFit(){
+  let f;try{f=gridFit()}catch(e){return}
+  $("#gridFit").innerHTML=f.lines.map(([k,t])=>`<p><span class="pill ${k}">${k==="ok"?"OK":"Check"}</span><span>${esc(t)}</span></p>`).join("");
+}
+function drawGrid(g,T,c){
+  const gs=RES.groups.filter(x=>x.floors&&x.fp.length);if(!gs.length)return;
+  const base=P.sel?(gs.find(x=>x.id===P.sel)||gs[0]):gs.reduce((m,x)=>x.fpArea>m.fpArea?x:m,gs[0]);
+  const L=GR.lines(P,P.site.pts);
+  g.save();path(g,T,P.site.pts);g.clip();
+  g.lineWidth=0.7;g.strokeStyle=hexA("#5A676B",0.45);g.setLineDash([10,3,2,3]);
+  const ext=4;
+  for(const u of L.U){const a=T(L.F.toW(u,L.bb.v0-ext)),b=T(L.F.toW(u,L.bb.v1+ext));g.beginPath();g.moveTo(a.x,a.y);g.lineTo(b.x,b.y);g.stroke()}
+  for(const v of L.V){const a=T(L.F.toW(L.bb.u0-ext,v)),b=T(L.F.toW(L.bb.u1+ext,v));g.beginPath();g.moveTo(a.x,a.y);g.lineTo(b.x,b.y);g.stroke()}
+  g.restore();
+  const geos=P.cores.map(C.geom).filter(Boolean);
+  const cols=GR.columns(P,base.fp,geos),s=Math.max(3,(+P.grid.col||0.6)*planT.k);
+  g.fillStyle=c.ink;for(const p of cols){const q=T(p);g.fillRect(q.x-s/2,q.y-s/2,s,s)}
+}
+let planT=null;
 
 /* ---------- Map + saved lots ---------- */
 function readSites(){try{return JSON.parse(localStorage.getItem(SITES_KEY)||"[]")}catch(e){return []}}
@@ -424,16 +569,46 @@ function bind(){
     loadSite({id:"pasted-"+Date.now().toString(36),ring:r,front:0,address:"Pasted boundary",spi:"",roads:[]});
     msg.textContent=`Loaded ${P.site.pts.length} corners. Set the edge types under Site.`;scrollToWork();
   });
+  $("#coreSuggest").addEventListener("click",()=>{const s=C.suggest(P,RES);if(!s.length){$("#coreNeed").textContent="no library core fits this floorplate";return}P.cores=s;P.coreSel=0;renderCores();recompute()});
+  $("#coreAdd").addEventListener("click",()=>{const base=P.cores[P.coreSel]||C.suggest(P,RES,1)[0];if(!base)return;
+    const p=C.place(P,RES,{...base,id:nid()},P.cores);if(!p){$("#coreNeed").textContent="no room for another core of that type";return}P.cores.push(p);P.coreSel=P.cores.length-1;renderCores();recompute()});
+  $("#coreCat").innerHTML=`<option value="all">All cores</option>`+Object.entries(C.CATS).map(([k,v])=>`<option value="${k}">${v}</option>`).join("");
+  $("#coreCat").value=P.coreView.cat;$("#coreSuit").checked=P.coreView.suit;
+  $("#coreCat").addEventListener("change",e=>{P.coreView.cat=e.target.value;renderCoreLib();save()});
+  $("#coreSuit").addEventListener("change",e=>{P.coreView.suit=e.target.checked;renderCoreLib();save()});
+  $("#perLift").addEventListener("input",e=>{P.coreRules.aptsPerLift=Math.max(10,parseFloat(e.target.value)||60);schedule()});
+  $("#aptDepth").addEventListener("input",e=>{P.coreRules.aptDepth=Math.max(4,parseFloat(e.target.value)||9);schedule()});
+  const gnum=(id,obj,k,min)=>$(id).addEventListener("input",e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=min){obj()[k]=v;schedule()}});
+  gnum("#gSx",()=>P.grid,"sx",3);gnum("#gSy",()=>P.grid,"sy",3);gnum("#gCol",()=>P.grid,"col",0.2);
+  gnum("#pW",()=>P.park,"W",2);gnum("#pL",()=>P.park,"L",4);gnum("#pA",()=>P.park,"A",3);
+  $("#gAng").addEventListener("input",e=>{const v=parseFloat(e.target.value);P.grid.angle=isFinite(v)?v:null;schedule()});
+  $("#gSnap").addEventListener("change",e=>{P.grid.snap=e.target.checked;if(P.grid.snap)P.cores.forEach(snapInst);schedule()});
+  $("#gAlign").addEventListener("click",()=>{const inst=P.cores[P.coreSel];if(!inst)return;const geo=C.geom(inst),F=GR.frame(P);
+    const us=geo.outline.map(p=>F.toG(p));const o=F.toW(Math.min(...us.map(q=>q.u)),Math.min(...us.map(q=>q.v)));P.grid.ox=o.x;P.grid.oy=o.y;
+    const t=GR.angle(P)*180/Math.PI;P.cores.forEach(c=>{if(Math.abs(((c.rot-t)%90+90)%90)>0.5&&Math.abs(((c.rot-t)%90+90)%90-90)>0.5)c.rot=t});
+    renderGrid();recompute()});
+  // drag cores on the plan
+  let drag=null;
+  const at=e=>{const r=cv.getBoundingClientRect();return planT.inv(e.clientX-r.left,e.clientY-r.top)};
+  const hit=w=>{for(let i=P.cores.length-1;i>=0;i--){const geo=C.geom(P.cores[i]);if(geo&&window.G.pip(w,geo.outline))return i}return -1};
+  cv.addEventListener("pointerdown",e=>{if(P.view!=="plan"||!planT)return;const w=at(e),i=hit(w);if(i<0)return;
+    const inst=P.cores[i];drag={i,dx:inst.x-w.x,dy:inst.y-w.y};P.coreSel=i;cv.setPointerCapture(e.pointerId);cv.classList.add("drag");renderCores();e.preventDefault()});
+  cv.addEventListener("pointermove",e=>{if(P.view!=="plan"||!planT)return;const w=at(e);
+    if(!drag){cv.classList.toggle("over",hit(w)>=0);return}
+    const inst=P.cores[drag.i];inst.x=w.x+drag.dx;inst.y=w.y+drag.dy;snapInst(inst);drawPlan()});
+  const end=()=>{if(!drag)return;drag=null;cv.classList.remove("drag");recompute()};
+  cv.addEventListener("pointerup",end);cv.addEventListener("pointercancel",end);
   let rz=null;new ResizeObserver(()=>{clearTimeout(rz);rz=setTimeout(draw,60)}).observe(cv);
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change",draw);
 }
 
 /* ---------- Boot ---------- */
 bind();if(!saved)fillToLimits(true);renderAll();
+C.load("../data/cores.json").then(()=>{coresReady=true;renderCores();libKey="";recompute()}).catch(()=>{$("#placed").innerHTML=`<p class="hint">The core library didn't load. Reload the page.</p>`});
 const mapOK=VM.init({container:"map",stat:$("#mapStat"),accent:css("--accent"),onSelect,onFail:m=>{const el=$("#mapMsg");el.hidden=false;el.innerHTML=`<b>Map unavailable</b><span>${esc(m)}</span>`}});
 if(mapOK&&P.site.ring)VM.goToRing(P.site.ring,P.site.address);
 renderSites();
 
 /* test hook */
-window.__fz={get P(){return P},get R(){return RES},get max(){return MAX},loadSite,setPlanning:r=>{setPlanning(r);renderPlanning()},recompute,fill:()=>{fillToLimits(false);renderStack();recompute()},set:(fn)=>{fn(P);renderAll()}};
+window.__fz={get P(){return P},get R(){return RES},get max(){return MAX},loadSite,setPlanning:r=>{setPlanning(r);renderPlanning()},recompute,fill:()=>{fillToLimits(false);renderStack();recompute()},set:(fn)=>{fn(P);renderAll()},cores:C,grid:GR,ready:()=>coresReady};
 })();

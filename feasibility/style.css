@@ -162,3 +162,26 @@ table.sched td:first-child{font-family:var(--f-body);font-weight:600}
 table.sched tr.tot td{font-weight:600;border-top:2px solid var(--ink);border-bottom:0}
 .gov{font:600 12px var(--f-body);padding:6px 8px;background:var(--bg);border-left:3px solid var(--ink);border-radius:2px}
 body{margin:0}
+/* cores + grid */
+.placed{display:flex;flex-direction:column;gap:6px}
+.slot{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;padding:7px 8px;border:1px solid var(--rule);border-radius:2px;background:var(--bg);cursor:pointer}
+.slot.sel{border:1.5px solid var(--ink);box-shadow:inset 3px 0 0 var(--accent)}
+.slot b{font-weight:600;font-size:13px;overflow-wrap:anywhere}
+.slot small{font:500 11px var(--f-mono);color:var(--muted);grid-column:1}
+.slot .tools{grid-row:1/3;grid-column:2;display:flex;gap:3px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:150px}
+.slot .tools button{font:600 12px var(--f-body);padding:4px 7px;border:1px solid var(--rule);background:var(--surface);color:var(--ink);border-radius:2px;cursor:pointer}
+.slot .tools button:hover{border-color:var(--ink)}
+.slot .tools label{font-size:12px;display:flex;gap:4px;align-items:center}
+.corelib{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;max-height:420px;overflow:auto;padding:1px}
+.ccard{display:flex;flex-direction:column;text-align:left;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--rule);border-radius:2px;padding:0;cursor:pointer;min-width:0}
+.ccard:hover{border-color:var(--muted)}
+.ccard.on{border:1.5px solid var(--ink)}
+.ccard.no{opacity:.55}
+.ccard canvas{width:100%;height:64px;display:block}
+.ccard span{padding:4px 6px 6px;display:flex;flex-direction:column;gap:1px;border-top:1px solid var(--rule)}
+.ccard b{font:600 12px var(--f-mono)}
+.ccard small{font-size:11px;color:var(--muted);line-height:1.3}
+.ccat{grid-column:1/-1;font:600 10.5px var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:6px 0 0}
+.gridfit{display:flex;flex-direction:column;gap:6px}
+.gridfit p{margin:0;font-size:12.5px;line-height:1.4;display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start}
+#view.drag{cursor:grabbing}#view.over{cursor:grab}

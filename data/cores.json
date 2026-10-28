@@ -18,7 +18,18 @@
    "stair": null,
    "w": 3200,
    "d": 3075,
-   "extras": []
+   "extras": [],
+   "rows": [
+    {
+     "d": 3075,
+     "parts": [
+      {
+       "t": "lift",
+       "w": 3200
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L02",
@@ -29,7 +40,22 @@
    "stair": null,
    "w": 5700,
    "d": 3200,
-   "extras": []
+   "extras": [],
+   "rows": [
+    {
+     "d": 3200,
+     "parts": [
+      {
+       "t": "lift",
+       "w": 2850
+      },
+      {
+       "t": "lift",
+       "w": 2850
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L03",
@@ -42,6 +68,25 @@
    "d": 3200,
    "extras": [
     "waste chute"
+   ],
+   "rows": [
+    {
+     "d": 3200,
+     "parts": [
+      {
+       "t": "riser",
+       "w": 2100
+      },
+      {
+       "t": "lift",
+       "w": 2700
+      },
+      {
+       "t": "lift",
+       "w": 2700
+      }
+     ]
+    }
    ]
   },
   {
@@ -53,7 +98,22 @@
    "stair": null,
    "w": 5700,
    "d": 3200,
-   "extras": []
+   "extras": [],
+   "rows": [
+    {
+     "d": 3200,
+     "parts": [
+      {
+       "t": "lift",
+       "w": 2850
+      },
+      {
+       "t": "lift",
+       "w": 2850
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L05",
@@ -70,9 +130,51 @@
    "variants": {
     "service lift on": {
      "lifts": 3,
-     "w": 9975
+     "w": 9975,
+     "rows": [
+      {
+       "d": 3200,
+       "parts": [
+        {
+         "t": "riser",
+         "w": 1500
+        },
+        {
+         "t": "lift",
+         "w": 2850
+        },
+        {
+         "t": "lift",
+         "w": 2850
+        },
+        {
+         "t": "lift",
+         "w": 2775
+        }
+       ]
+      }
+     ]
     }
-   }
+   },
+   "rows": [
+    {
+     "d": 3200,
+     "parts": [
+      {
+       "t": "riser",
+       "w": 1500
+      },
+      {
+       "t": "lift",
+       "w": 2850
+      },
+      {
+       "t": "lift",
+       "w": 2850
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L06",
@@ -90,9 +192,43 @@
     "service lift on": {
      "cat": "linear",
      "lifts": 1,
-     "w": 10225
+     "w": 10225,
+     "rows": [
+      {
+       "d": 3200,
+       "parts": [
+        {
+         "t": "lobby",
+         "w": 1500
+        },
+        {
+         "t": "stair",
+         "w": 5950
+        },
+        {
+         "t": "lift",
+         "w": 2775
+        }
+       ]
+      }
+     ]
     }
-   }
+   },
+   "rows": [
+    {
+     "d": 3200,
+     "parts": [
+      {
+       "t": "lobby",
+       "w": 1500
+      },
+      {
+       "t": "stair",
+       "w": 5950
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L07",
@@ -111,9 +247,43 @@
     "service lift on": {
      "cat": "linear",
      "lifts": 1,
-     "w": 10225
+     "w": 10225,
+     "rows": [
+      {
+       "d": 3200,
+       "parts": [
+        {
+         "t": "lobby",
+         "w": 1500
+        },
+        {
+         "t": "stair",
+         "w": 5950
+        },
+        {
+         "t": "lift",
+         "w": 2775
+        }
+       ]
+      }
+     ]
     }
-   }
+   },
+   "rows": [
+    {
+     "d": 3200,
+     "parts": [
+      {
+       "t": "lobby",
+       "w": 1500
+      },
+      {
+       "t": "stair",
+       "w": 5950
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L08",
@@ -126,6 +296,21 @@
    "d": 2960,
    "extras": [
     "services riser"
+   ],
+   "rows": [
+    {
+     "d": 2960,
+     "parts": [
+      {
+       "t": "scissor",
+       "w": 7730
+      },
+      {
+       "t": "riser",
+       "w": 1350
+      }
+     ]
+    }
    ]
   },
   {
@@ -137,7 +322,18 @@
    "stair": "single",
    "w": 5900,
    "d": 3200,
-   "extras": []
+   "extras": [],
+   "rows": [
+    {
+     "d": 3200,
+     "parts": [
+      {
+       "t": "stair",
+       "w": 5900
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L10",
@@ -150,6 +346,17 @@
    "d": 3100,
    "extras": [
     "riser"
+   ],
+   "rows": [
+    {
+     "d": 3100,
+     "parts": [
+      {
+       "t": "stair",
+       "w": 5200
+      }
+     ]
+    }
    ]
   },
   {
@@ -164,6 +371,17 @@
    "extras": [
     "riser",
     "alt entry"
+   ],
+   "rows": [
+    {
+     "d": 3100,
+     "parts": [
+      {
+       "t": "stair",
+       "w": 5200
+      }
+     ]
+    }
    ]
   },
   {
@@ -177,6 +395,21 @@
    "d": 3100,
    "extras": [
     "waste chute"
+   ],
+   "rows": [
+    {
+     "d": 3100,
+     "parts": [
+      {
+       "t": "stair",
+       "w": 4550
+      },
+      {
+       "t": "riser",
+       "w": 2070
+      }
+     ]
+    }
    ]
   },
   {
@@ -190,6 +423,17 @@
    "d": 3460,
    "extras": [
     "services press (rear)"
+   ],
+   "rows": [
+    {
+     "d": 3460,
+     "parts": [
+      {
+       "t": "scissor",
+       "w": 7930
+      }
+     ]
+    }
    ]
   },
   {
@@ -203,6 +447,17 @@
    "d": 3610,
    "extras": [
     "services press (front)"
+   ],
+   "rows": [
+    {
+     "d": 3610,
+     "parts": [
+      {
+       "t": "scissor",
+       "w": 7880
+      }
+     ]
+    }
    ]
   },
   {
@@ -214,7 +469,22 @@
    "stair": "single",
    "w": 7775,
    "d": 3150,
-   "extras": []
+   "extras": [],
+   "rows": [
+    {
+     "d": 3150,
+     "parts": [
+      {
+       "t": "stair",
+       "w": 4700
+      },
+      {
+       "t": "lift",
+       "w": 3075
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L16",
@@ -225,7 +495,22 @@
    "stair": "single",
    "w": 7475,
    "d": 3150,
-   "extras": []
+   "extras": [],
+   "rows": [
+    {
+     "d": 3150,
+     "parts": [
+      {
+       "t": "lift",
+       "w": 3075
+      },
+      {
+       "t": "stair",
+       "w": 4400
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L17",
@@ -238,6 +523,25 @@
    "d": 3150,
    "extras": [
     "riser"
+   ],
+   "rows": [
+    {
+     "d": 3150,
+     "parts": [
+      {
+       "t": "lift",
+       "w": 2775
+      },
+      {
+       "t": "lift",
+       "w": 2775
+      },
+      {
+       "t": "stair",
+       "w": 5100
+      }
+     ]
+    }
    ]
   },
   {
@@ -252,7 +556,30 @@
    "extras": [
     "riser"
    ],
-   "note": "lift-stair-lift"
+   "note": "lift-stair-lift",
+   "rows": [
+    {
+     "d": 3200,
+     "parts": [
+      {
+       "t": "lift",
+       "w": 3075
+      },
+      {
+       "t": "scissor",
+       "w": 7630
+      },
+      {
+       "t": "riser",
+       "w": 750
+      },
+      {
+       "t": "lift",
+       "w": 3075
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L19",
@@ -264,7 +591,30 @@
    "w": 17950,
    "d": 3150,
    "extras": [],
-   "note": "stair-lift-lift-stair"
+   "note": "stair-lift-lift-stair",
+   "rows": [
+    {
+     "d": 3150,
+     "parts": [
+      {
+       "t": "stair",
+       "w": 5800
+      },
+      {
+       "t": "lift",
+       "w": 3175
+      },
+      {
+       "t": "lift",
+       "w": 3175
+      },
+      {
+       "t": "stair",
+       "w": 5800
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L20",
@@ -278,6 +628,38 @@
    "extras": [
     "services",
     "waste"
+   ],
+   "rows": [
+    {
+     "d": 2800,
+     "parts": [
+      {
+       "t": "scissor",
+       "w": 7290
+      },
+      {
+       "t": "riser",
+       "w": 1300
+      }
+     ]
+    },
+    {
+     "d": 3190,
+     "parts": [
+      {
+       "t": "lift",
+       "w": 2850
+      },
+      {
+       "t": "lift",
+       "w": 2700
+      },
+      {
+       "t": "riser",
+       "w": 3040
+      }
+     ]
+    }
    ]
   },
   {
@@ -293,7 +675,48 @@
     "services",
     "waste"
    ],
-   "note": "lobby between stair and lift blocks"
+   "note": "lobby between stair and lift blocks",
+   "rows": [
+    {
+     "d": 3000,
+     "parts": [
+      {
+       "t": "scissor",
+       "w": 7730
+      },
+      {
+       "t": "riser",
+       "w": 1350
+      }
+     ]
+    },
+    {
+     "d": 2110,
+     "parts": [
+      {
+       "t": "gap",
+       "w": 9080
+      }
+     ]
+    },
+    {
+     "d": 3000,
+     "parts": [
+      {
+       "t": "lift",
+       "w": 2925
+      },
+      {
+       "t": "lift",
+       "w": 3325
+      },
+      {
+       "t": "riser",
+       "w": 2830
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L22",
@@ -307,7 +730,48 @@
    "extras": [
     "services"
    ],
-   "note": "lobby between stair and lift blocks"
+   "note": "lobby between stair and lift blocks",
+   "rows": [
+    {
+     "d": 3000,
+     "parts": [
+      {
+       "t": "scissor",
+       "w": 8285
+      },
+      {
+       "t": "riser",
+       "w": 1700
+      }
+     ]
+    },
+    {
+     "d": 2110,
+     "parts": [
+      {
+       "t": "gap",
+       "w": 9985
+      }
+     ]
+    },
+    {
+     "d": 3000,
+     "parts": [
+      {
+       "t": "lift",
+       "w": 3328
+      },
+      {
+       "t": "lift",
+       "w": 3328
+      },
+      {
+       "t": "lift",
+       "w": 3329
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L23",
@@ -321,7 +785,34 @@
    "extras": [
     "riser"
    ],
-   "note": "lift 3000 | stair + riser 5850 | lobby ~1950 | lift 3000 (gaps measured)"
+   "note": "lift 3000 | stair + riser 5850 | lobby ~1950 | lift 3000 (gaps measured)",
+   "rows": [
+    {
+     "d": 3775,
+     "parts": [
+      {
+       "t": "lift",
+       "w": 3000
+      },
+      {
+       "t": "stair",
+       "w": 4850
+      },
+      {
+       "t": "riser",
+       "w": 1000
+      },
+      {
+       "t": "gap",
+       "w": 1900
+      },
+      {
+       "t": "lift",
+       "w": 3000
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L24",
@@ -335,7 +826,34 @@
    "extras": [
     "riser"
    ],
-   "note": "scissor stair + riser 8750 | lift 3200 | lobby ~2000 | lift 3200 (gaps measured)"
+   "note": "scissor stair + riser 8750 | lift 3200 | lobby ~2000 | lift 3200 (gaps measured)",
+   "rows": [
+    {
+     "d": 3075,
+     "parts": [
+      {
+       "t": "scissor",
+       "w": 7750
+      },
+      {
+       "t": "riser",
+       "w": 1000
+      },
+      {
+       "t": "lift",
+       "w": 3200
+      },
+      {
+       "t": "gap",
+       "w": 2000
+      },
+      {
+       "t": "lift",
+       "w": 3200
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L25",
@@ -349,7 +867,38 @@
    "extras": [
     "riser"
    ],
-   "note": "lift 3400 | scissor stair | lift 3400"
+   "note": "lift 3400 | scissor stair | lift 3400",
+   "rows": [
+    {
+     "d": 3275,
+     "parts": [
+      {
+       "t": "lift",
+       "w": 3400
+      },
+      {
+       "t": "gap",
+       "w": 1600
+      },
+      {
+       "t": "scissor",
+       "w": 7750
+      },
+      {
+       "t": "riser",
+       "w": 800
+      },
+      {
+       "t": "gap",
+       "w": 1600
+      },
+      {
+       "t": "lift",
+       "w": 3400
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "L26",
@@ -363,8 +912,52 @@
    "extras": [
     "riser"
    ],
-   "note": "stair ~5050 | lobby ~1050 | 2 lifts + services ~7150 | lobby ~1950 | stair ~5250 (gaps measured)"
+   "note": "stair ~5050 | lobby ~1050 | 2 lifts + services ~7150 | lobby ~1950 | stair ~5250 (gaps measured)",
+   "rows": [
+    {
+     "d": 3850,
+     "parts": [
+      {
+       "t": "stair",
+       "w": 5050
+      },
+      {
+       "t": "gap",
+       "w": 1050
+      },
+      {
+       "t": "lift",
+       "w": 3050
+      },
+      {
+       "t": "lift",
+       "w": 3050
+      },
+      {
+       "t": "riser",
+       "w": 1050
+      },
+      {
+       "t": "gap",
+       "w": 1950
+      },
+      {
+       "t": "stair",
+       "w": 5250
+      }
+     ]
+    }
+   ]
   }
  ],
- "placement": "Every core can be moved, rotated (90-degree steps or free) and mirrored in either direction by the user."
+ "placement": "Every core can be moved, rotated (90-degree steps or free) and mirrored in either direction by the user.",
+ "parts": {
+  "lift": "Lift shaft",
+  "stair": "Stair",
+  "scissor": "Scissor stair (2 exits)",
+  "riser": "Services / riser / chute",
+  "lobby": "Lobby",
+  "gap": "Open lobby or corridor (not core)"
+ },
+ "front": "Lift doors and stair doors open to the +y side (front) in the core's own frame, before flipping or rotating."
 }

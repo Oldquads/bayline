@@ -1,7 +1,7 @@
 /* Envelope and level-stack calculations. Pure functions of a project object, no DOM. */
 (function(){
 "use strict";
-const {area,inward,dot,setbackShape,shapeArea,union,offsetShape}=window.G;
+const {area,inward,dot,setbackShape,shapeArea,union,inter,offsetShape}=window.G;
 const R=window.RULES;
 
 /* Street = edges Vicmap matched to a road (or the chosen frontage); rear = edges facing away from
@@ -46,14 +46,17 @@ function compute(P){
     z=z1;storeys+=floors;
   }
   /* Site coverage and garden area cap how much ground the building may cover. If the envelope
-     covers more, pull every floorplate in evenly until the covered area fits. */
+     covers more, pull the building's outer edge (the union of all floorplates) in evenly until
+     it fits, and cut each floorplate to it. Floors already inside that edge are left alone. */
   let trim=0;
   const allow=siteArea*Math.min(ctl.coverage?ctl.coverage/100:1,ctl.garden?1-ctl.garden/100:1);
-  if(allow<siteArea&&P.fitSite!==false){
-    const cov=d=>{const s=groups.flatMap(g=>d?offsetShape(g.fp,-d):g.fp);return s.length?shapeArea(union(s)):0};
+  const all=groups.flatMap(g=>g.fp);
+  if(allow<siteArea&&P.fitSite!==false&&all.length){
+    const U=union(all),cov=d=>shapeArea(d?offsetShape(U,-d):U);
     if(cov(0)>allow+0.5){
       let lo=0,hi=40;for(let k=0;k<18;k++){const m=(lo+hi)/2;if(cov(m)>allow)lo=m;else hi=m}
-      trim=hi;for(const g of groups)g.fp=g.fp.length?offsetShape(g.fp,-trim):[];
+      trim=hi;const edge=offsetShape(U,-trim);
+      for(const g of groups)g.fp=g.fp.length&&edge.length?inter(g.fp,edge):[];
     }
   }
   for(const g of groups){
@@ -84,7 +87,7 @@ function checks(P,r){
   if(c.far)out.push(r.far<=c.far+1e-6?["ok",`Floor area ratio ${r.far.toFixed(2)}:1 is within ${(+c.far).toFixed(2)}:1.`]:["bad",`Floor area ratio ${r.far.toFixed(2)}:1 is over ${(+c.far).toFixed(2)}:1 by ${f1((r.far-c.far)*r.siteArea)} m² of GFA.`]);
   if(c.coverage)out.push(r.coverage<=c.coverage+1e-6?["ok",`Site coverage ${r.coverage.toFixed(0)}% is within ${c.coverage}%.`]:["bad",`Site coverage ${r.coverage.toFixed(0)}% is over ${c.coverage}%.`]);
   if(c.garden)out.push(r.garden>=c.garden-1e-6?["ok",`Open area ${r.garden.toFixed(0)}% meets the ${c.garden}% minimum garden area (approximate: driveways and paths don't count as garden area).`]:["bad",`Open area ${r.garden.toFixed(0)}% is below the ${c.garden}% minimum garden area.`]);
-  if(r.trim>0.05)out.push(["info",`Floorplates pulled in ${r.trim.toFixed(1)} m all round from the setback envelope to meet ${c.coverage&&(!c.garden||c.coverage/100<=1-c.garden/100)?"site coverage":"the garden area minimum"}.`]);
+  if(r.trim>0.05)out.push(["info",`Building edge pulled in ${r.trim.toFixed(1)} m from the setback envelope to meet ${c.coverage&&(!c.garden||c.coverage/100<=1-c.garden/100)?"site coverage":"the garden area minimum"}.`]);
   for(const g of r.groups)if(g.floors&&g.fpArea<1)out.push(["bad",`${g.name}: the setbacks leave no floor area at ${f1(g.z1)} m.`]);
   return out;
 }
