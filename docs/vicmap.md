@@ -22,3 +22,12 @@ The endpoint is open, needs no key, and allows cross-origin requests: `https://o
 - **Address search:** `typeNames=open-data-platform:address&CQL_FILTER=ezi_address ILIKE '1 MALCOLM%STREET%SOUTH%YARRA%' OR ezi_address ILIKE '%/1 MALCOLM%...'`. Abbreviations (ST, RD, AVE…) are expanded first. The house number is kept whole, so "1" doesn't match "1309/35".
 - **Address of a clicked lot:** address points in the lot's bbox (plus 15 m), keeping those inside the lot polygon, `is_primary=Y` first.
 - **Street frontage:** the lot edge whose outside (1.5 m out) falls in a road reserve, or within 25 m and 30° of a named, non-tunnel road centreline. The longest such edge is the street edge.
+
+## Planning layers (feasibility page)
+
+| Use | typeName | Fields read |
+|---|---|---|
+| Zones | `open-data-platform:plan_zone` | `zone_code` (e.g. GRZ1), `zone_description`, `lga` |
+| Overlays | `open-data-platform:plan_overlay` | `zone_code` (e.g. DDO10), `zone_description` |
+
+Queried by the lot's bbox (`bbox=...,EPSG:4326`, lon first), then intersected with the lot polygon to get the share of the lot each zone or overlay covers. Field names are matched loosely in `lib/vicmap.js` in case the GeoServer schema differs from the ArcGIS mirror. Not yet confirmed against a live response: check the first real lookup.

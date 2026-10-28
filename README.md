@@ -8,3 +8,7 @@ Pick a lot on an OpenStreetMap base map (MapLibre + OpenFreeMap Positron), and B
 - Lots, roads and addresses: Vicmap © State of Victoria, CC BY 4.0 (live from opendata.maps.vic.gov.au)
 
 Test-fit only: ramps, grades, headroom, columns, sight distance and parking rates are not checked.
+
+## Feasibility planner
+
+`/feasibility/` takes a lot through the residential feasibility steps: Vicmap Planning zone and overlays, planning controls (height, storeys, FAR, coverage, garden area, setback bands, ResCode B17), the building envelope, and a ground / podium / tower level stack with GFA, FAR, net saleable area and an area schedule. Cores, grid, apartment layout and parking are the next phases (see `docs/feasibility.md`).

@@ -2,6 +2,8 @@
 
 Bayline is a single-page car park test-fit tool for Victorian sites, live at **https://oldquads.github.io/bayline/**. You search an address or click a lot on an OpenStreetMap base map. The planner then lays out car parking on the lot's title boundary, ranks the options by bay count, and checks them against **Clause 52.06** of the Victoria Planning Provisions and **AS/NZS 2890.1 / 2890.6**.
 
+The **feasibility planner** (`feasibility/`, live at /bayline/feasibility/) runs the user's full workflow: site → planning controls → envelope → core → grid → apartments → parking. Phase 1 (site, controls, envelope, level stack) is built; see `docs/feasibility.md` for the plan, phases and decisions.
+
 Read `docs/HANDOVER.md` first. It covers how the tool got here, the decisions behind it and the open ideas.
 
 ## Working rules (from the user, keep to them)
@@ -22,6 +24,11 @@ Read `docs/HANDOVER.md` first. It covers how the tool got here, the decisions be
 - `bench/out/`: results and screenshots (gitignored).
 - `docs/HANDOVER.md`: history, decisions and open ideas.
 - `docs/vicmap.md`: Vicmap WFS layers and query notes.
+- `docs/feasibility.md`: feasibility planner plan, phases, decisions and checks.
+- `feasibility/`: the feasibility page (`index.html`, `app.js`, `envelope.js`, `rules.js`, `style.css`).
+- `lib/geom.js`, `lib/vicmap.js`: shared geometry (Clipper) and map/Vicmap code used by the feasibility page. The car park page still has its own copy; move it over when the parking step is built.
+- `data/cores.json`: the user's 26 stock stair and lift cores.
+- `bench/feas.js`: feasibility check on all bench lots (`npm i --no-save clipper-lib@6.4.2`, then `node bench/feas.js`).
 
 ## Map of index.html (search for these markers)
 

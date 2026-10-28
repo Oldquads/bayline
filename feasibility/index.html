@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Residential feasibility for Victorian sites: pick a Vicmap lot, check its zone and overlays, set planning controls, and stack ground, podium and tower levels inside the envelope.">
+<title>Bayline Feasibility</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/clipper-lib@6.4.2/clipper.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1><span class="stripe" aria-hidden="true"></span>Bayline</h1>
+      <p>Residential feasibility for Victorian sites · zone, envelope and level stack</p>
+    </div>
+    <nav class="tabs" aria-label="Bayline tools">
+      <a href="../">Car park</a>
+      <a href="./" aria-current="page">Feasibility</a>
+    </nav>
+  </header>
+
+  <section class="finder" aria-labelledby="h-find">
+    <div class="mapbox">
+      <div id="map" aria-label="Map of Victoria. Drag to pan, scroll to zoom, click a lot to select it."></div>
+      <div class="mapmsg" id="mapMsg" hidden></div>
+      <div class="mapstat" id="mapStat" hidden></div>
+    </div>
+    <div class="float">
+      <div class="eyebrow">Step 1 · Site</div>
+      <h2 id="h-find">Find the site</h2>
+      <p class="lede">Search an address or zoom in and click a lot. Its zone and overlays are looked up from Vicmap Planning.</p>
+      <form id="searchForm" class="search" autocomplete="off">
+        <label class="cap" for="address">Victorian address</label>
+        <div class="sbox">
+          <input id="address" type="search" placeholder="e.g. 1267 Nepean Highway Cheltenham">
+          <button class="btn on" type="submit">Search</button>
+        </div>
+        <ul id="results" class="results" hidden></ul>
+      </form>
+      <div class="lotcard">
+        <div class="cap">Selected lot</div>
+        <div id="lotBody"><p class="hint">Nothing selected yet. Lots appear once you zoom in to a few blocks.</p></div>
+      </div>
+      <div class="lotcard" id="savedCard">
+        <div class="cap">Saved lots <span id="savedN"></span></div>
+        <div id="sites" class="sites"></div>
+        <p class="hint" id="sitesHint">Lots you use here or on the car park page are listed here.</p>
+        <details class="paste">
+          <summary>Paste a boundary instead</summary>
+          <div class="fld">
+            <label class="cap" for="pasteBox">GeoJSON, or lon, lat pairs one per line</label>
+            <textarea id="pasteBox" spellcheck="false" placeholder="145.0412, -37.9672&#10;145.0418, -37.9675&#10;…"></textarea>
+          </div>
+          <div class="row"><button class="btn" id="pasteBtn" type="button">Load boundary</button></div>
+          <p class="hint" id="pasteMsg">GDA2020 or WGS84 degrees.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid">
+    <aside>
+      <section class="panel" aria-labelledby="h-site">
+        <h2 id="h-site">Site <span id="siteMeta">–</span></h2>
+        <div id="siteName" class="sitename"></div>
+        <div style="overflow-x:auto">
+          <table class="specs" id="edgeTable">
+            <thead><tr><th>Edge</th><th>Length</th><th>Type</th><th>Road</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint">Edge types set which setback applies. Street edges come from Vicmap roads; the edge facing away from the street is the rear.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="h-plan">
+        <h2 id="h-plan">Step 2 · Planning controls <span id="planState"></span></h2>
+        <div class="row">
+          <div class="fld"><label class="cap" for="zone">Zone</label><select id="zone"></select></div>
+          <div class="fld" style="flex:0 1 70px"><label class="cap" for="zoneSched">Schedule</label><input id="zoneSched" type="text" placeholder="1"></div>
+        </div>
+        <div id="zoneInfo" class="zoneinfo"></div>
+        <div id="overlays" class="overlays"></div>
+        <div class="row">
+          <div class="fld"><label class="cap" for="cHeight">Max height m</label><input id="cHeight" type="number" step="0.5" min="0" placeholder="none"></div>
+          <div class="fld"><label class="cap" for="cStoreys">Max storeys</label><input id="cStoreys" type="number" step="1" min="0" placeholder="none"></div>
+          <div class="fld"><label class="cap" for="cFar">FAR :1</label><input id="cFar" type="number" step="0.1" min="0" placeholder="none"></div>
+        </div>
+        <div class="row">
+          <div class="fld"><label class="cap" for="cCov">Max site coverage %</label><input id="cCov" type="number" step="1" min="0" max="100" placeholder="none"></div>
+          <div class="fld"><label class="cap" for="cGarden">Min garden area %</label><input id="cGarden" type="number" step="1" min="0" max="100" placeholder="none"></div>
+        </div>
+        <div class="row">
+          <div class="fld"><label class="cap" for="preset">Setback preset</label><select id="preset"></select></div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="specs" id="bandTable">
+            <thead><tr><th>Up to m</th><th>Street</th><th>Side</th><th>Rear</th><th>Lane</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="row" style="align-items:center">
+          <button class="btn" id="addBand" type="button">+ Height band</button>
+          <label class="chk" style="flex:2 1 180px"><input type="checkbox" id="rescode"> ResCode B17 side &amp; rear profile</label>
+        </div>
+        <div class="row">
+          <div class="fld"><label class="cap" for="cRoof">Roof / parapet allowance m</label><input id="cRoof" type="number" step="0.1" min="0"></div>
+          <label class="chk" style="align-self:end;padding-bottom:6px"><input type="checkbox" id="exclCar"> Car park levels not in FAR</label>
+        </div>
+        <p class="hint">Setbacks in each band apply from the band below up to its height. Leave the last band's height empty to run to the top. Starting values come from the zone; check the schedule and any DDO.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="h-stack">
+        <h2 id="h-stack">Step 3 · Level stack</h2>
+        <div id="stack" class="stack"></div>
+        <div class="row">
+          <button class="btn" id="addPodium" type="button">+ Podium</button>
+          <button class="btn" id="addTower" type="button">+ Tower typical</button>
+          <button class="btn go" id="maxOut" type="button">Fill to limits</button>
+        </div>
+        <p class="hint" id="maxMsg"></p>
+        <div class="row">
+          <div class="fld"><label class="cap" for="aptSize">Average apartment m²</label><input id="aptSize" type="number" step="1" min="30"></div>
+          <div class="fld"><label class="cap" for="effApt">Apartment efficiency %</label><input id="effApt" type="number" step="1" min="40" max="100"></div>
+        </div>
+        <p class="hint">Each group's floorplate is the envelope at its top floor. Apartment numbers are a rough count (net area ÷ average size) until the apartment layout step.</p>
+      </section>
+    </aside>
+
+    <main>
+      <section class="sheet">
+        <div class="planbox">
+          <div class="planbar">
+            <div class="t" id="viewTitle">Plan</div>
+            <div class="tools">
+              <div class="seg" role="group" aria-label="View">
+                <button class="btn on" id="vPlan" type="button" aria-pressed="true">Plan</button>
+                <button class="btn" id="v3d" type="button" aria-pressed="false">3D</button>
+              </div>
+              <button class="btn" id="rot" type="button" title="Rotate the 3D view" hidden>Rotate</button>
+              <button class="btn" id="csvBtn" type="button">Save area schedule</button>
+            </div>
+          </div>
+          <canvas id="view" aria-label="Site plan with envelope and floorplates"></canvas>
+          <div class="legend" id="legend"></div>
+        </div>
+        <div class="summary" id="summary"></div>
+      </section>
+      <section class="panel">
+        <h2>Area schedule <span id="schedNote"></span></h2>
+        <div style="overflow-x:auto"><table class="sched" id="sched"></table></div>
+      </section>
+      <p class="note">Feasibility only. The envelope applies the setbacks above as distances from each boundary; it does not check overshadowing, overlooking, daylight to neighbours or DDO wording. Zone and overlay data: Vicmap Planning.</p>
+    </main>
+  </div>
+</div>
+<script src="../lib/geom.js"></script>
+<script src="../lib/vicmap.js"></script>
+<script src="rules.js"></script>
+<script src="envelope.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

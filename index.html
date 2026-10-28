@@ -103,6 +103,10 @@ ul.checks li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;font-
 .opt .rank{font:500 11px var(--f-mono);color:var(--muted)}
 .empty{padding:28px;border:1.5px dashed var(--rule);border-radius:3px;color:var(--muted);text-align:center}
 .status{font:500 12px var(--f-mono);color:var(--muted)}
+.tabs{display:flex;gap:4px}
+.tabs a{font:600 13px var(--f-body);color:var(--ink);text-decoration:none;padding:7px 12px;border:1.5px solid var(--ink);border-radius:2px;background:var(--surface)}
+.tabs a:hover{background:var(--sunk)}
+.tabs a[aria-current=page]{background:var(--ink);color:var(--surface)}
 .hdr-src{margin:0;font-size:12px;color:var(--muted);max-width:420px}
 .finder{position:relative;border:1px solid var(--rule);border-radius:3px;margin-bottom:20px;min-width:0;overflow:hidden;background:#E8E9E6}
 .mapbox{position:relative;min-width:0}
@@ -165,6 +169,7 @@ details.paste[open]{display:flex;flex-direction:column;gap:8px}
       <h1><span class="stripe" aria-hidden="true"></span>Bayline</h1>
       <p>Car park test fits for Victorian sites · Clause 52.06 &amp; AS/NZS 2890.1</p>
     </div>
+    <nav class="tabs" aria-label="Bayline tools"><a href="./" aria-current="page">Car park</a><a href="feasibility/">Feasibility</a></nav>
     <p class="hdr-src">Map: OpenFreeMap · © OpenMapTiles · © OpenStreetMap contributors. Lots, roads and addresses: Vicmap © State of Victoria, CC BY 4.0</p>
   </header>
 

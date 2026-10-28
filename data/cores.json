@@ -1,0 +1,370 @@
+{
+ "source": "Fraser & Partners A0900 Stair & Lift Cores, NCC 2026 set (view 1). Dimensions in mm, overall incl. walls.",
+ "standard": "1075 stair flights, 1300 landings, 250 stagger, lift shaft 2475 x 2600",
+ "categories": {
+  "lift": "Lift shafts only. Pair with a stair block.",
+  "stair": "Stair only. Pair with a lift block, or for walk-ups.",
+  "linear": "Lifts and stair(s) in one row. Suits double-loaded corridors.",
+  "kit": "Lifts and stair(s) as separate blocks at fixed spacing, with corridor or lobby between.",
+  "deep": "Stairs and lifts stacked two deep. Suits rear-loaded or compact floorplates."
+ },
+ "cores": [
+  {
+   "id": "L01",
+   "family": "NB_MICRO CORE_1 LIFT_2026",
+   "cat": "lift",
+   "lifts": 1,
+   "stairs": 0,
+   "stair": null,
+   "w": 3200,
+   "d": 3075,
+   "extras": []
+  },
+  {
+   "id": "L02",
+   "family": "NB_CORE_2 LIFT_5500_2026",
+   "cat": "lift",
+   "lifts": 2,
+   "stairs": 0,
+   "stair": null,
+   "w": 5700,
+   "d": 3200,
+   "extras": []
+  },
+  {
+   "id": "L03",
+   "family": "NB_CORE_2 LIFT_WASTE CHUTE_2026",
+   "cat": "lift",
+   "lifts": 2,
+   "stairs": 0,
+   "stair": null,
+   "w": 7500,
+   "d": 3200,
+   "extras": [
+    "waste chute"
+   ]
+  },
+  {
+   "id": "L04",
+   "family": "NB_CORE_2 LIFT_2026",
+   "cat": "lift",
+   "lifts": 2,
+   "stairs": 0,
+   "stair": null,
+   "w": 5700,
+   "d": 3200,
+   "extras": []
+  },
+  {
+   "id": "L05",
+   "family": "NB_CORE_2 LIFT_5500_With Services_2026",
+   "cat": "lift",
+   "lifts": 2,
+   "stairs": 0,
+   "stair": null,
+   "w": 7200,
+   "d": 3200,
+   "extras": [
+    "services riser"
+   ],
+   "variants": {
+    "service lift on": {
+     "lifts": 3,
+     "w": 9975
+    }
+   }
+  },
+  {
+   "id": "L06",
+   "family": "NB_CORE_SINGLE STAIR_3300_With Lobby_2026",
+   "cat": "stair",
+   "lifts": 0,
+   "stairs": 1,
+   "stair": "single",
+   "w": 7450,
+   "d": 3200,
+   "extras": [
+    "lobby"
+   ],
+   "variants": {
+    "service lift on": {
+     "cat": "linear",
+     "lifts": 1,
+     "w": 10225
+    }
+   }
+  },
+  {
+   "id": "L07",
+   "family": "NB_CORE_SINGLE STAIR_3300_With Lobby_Alt Door_2026",
+   "cat": "stair",
+   "lifts": 0,
+   "stairs": 1,
+   "stair": "single",
+   "w": 7450,
+   "d": 3200,
+   "extras": [
+    "lobby",
+    "alt door"
+   ],
+   "variants": {
+    "service lift on": {
+     "cat": "linear",
+     "lifts": 1,
+     "w": 10225
+    }
+   }
+  },
+  {
+   "id": "L08",
+   "family": "NB_CORE_SCISSOR STAIR_2026",
+   "cat": "stair",
+   "lifts": 0,
+   "stairs": 2,
+   "stair": "scissor",
+   "w": 9080,
+   "d": 2960,
+   "extras": [
+    "services riser"
+   ]
+  },
+  {
+   "id": "L09",
+   "family": "NB_CORE_SINGLE STAIR_3300_2026",
+   "cat": "stair",
+   "lifts": 0,
+   "stairs": 1,
+   "stair": "single",
+   "w": 5900,
+   "d": 3200,
+   "extras": []
+  },
+  {
+   "id": "L10",
+   "family": "NB_CORE_SINGLE STAIR_2026",
+   "cat": "stair",
+   "lifts": 0,
+   "stairs": 1,
+   "stair": "single",
+   "w": 5200,
+   "d": 3100,
+   "extras": [
+    "riser"
+   ]
+  },
+  {
+   "id": "L11",
+   "family": "NB_CORE_SINGLE STAIR_ALTERNATE ENTRY_2026",
+   "cat": "stair",
+   "lifts": 0,
+   "stairs": 1,
+   "stair": "single",
+   "w": 5200,
+   "d": 3100,
+   "extras": [
+    "riser",
+    "alt entry"
+   ]
+  },
+  {
+   "id": "L12",
+   "family": "NB_CORE_SINGLE STAIR_WASTE CHUTE_2026",
+   "cat": "stair",
+   "lifts": 0,
+   "stairs": 1,
+   "stair": "single",
+   "w": 6620,
+   "d": 3100,
+   "extras": [
+    "waste chute"
+   ]
+  },
+  {
+   "id": "L13",
+   "family": "NB_CORE_SCISSOR STAIR_PRESS TO REAR_2026",
+   "cat": "stair",
+   "lifts": 0,
+   "stairs": 2,
+   "stair": "scissor",
+   "w": 7930,
+   "d": 3460,
+   "extras": [
+    "services press (rear)"
+   ]
+  },
+  {
+   "id": "L14",
+   "family": "NB_CORE_SCISSOR STAIR_LINEAR STAIR PRESS_2026",
+   "cat": "stair",
+   "lifts": 0,
+   "stairs": 2,
+   "stair": "scissor",
+   "w": 7880,
+   "d": 3610,
+   "extras": [
+    "services press (front)"
+   ]
+  },
+  {
+   "id": "L15",
+   "family": "NB_MICRO CORE_1 LIFT SINGLE STAIR_2_2026",
+   "cat": "linear",
+   "lifts": 1,
+   "stairs": 1,
+   "stair": "single",
+   "w": 7775,
+   "d": 3150,
+   "extras": []
+  },
+  {
+   "id": "L16",
+   "family": "NB_MICRO CORE_1 LIFT SINGLE STAIR_3_2026",
+   "cat": "linear",
+   "lifts": 1,
+   "stairs": 1,
+   "stair": "single",
+   "w": 7475,
+   "d": 3150,
+   "extras": []
+  },
+  {
+   "id": "L17",
+   "family": "NB_CORE_LINEAR CORE_2 LIFT_SINGLE STAIR_2026",
+   "cat": "linear",
+   "lifts": 2,
+   "stairs": 1,
+   "stair": "single",
+   "w": 10650,
+   "d": 3150,
+   "extras": [
+    "riser"
+   ]
+  },
+  {
+   "id": "L18",
+   "family": "NB_CORE_MICRO CORE_2 LIFT SINGLE STAIR_OPTION 03_2026",
+   "cat": "linear",
+   "lifts": 2,
+   "stairs": 1,
+   "stair": "single",
+   "w": 14530,
+   "d": 3200,
+   "extras": [
+    "riser"
+   ],
+   "note": "lift-stair-lift"
+  },
+  {
+   "id": "L19",
+   "family": "NB_MICRO CORE_2 LIFT_2 SINGLE STAIR_2026",
+   "cat": "linear",
+   "lifts": 2,
+   "stairs": 2,
+   "stair": "two separate",
+   "w": 17950,
+   "d": 3150,
+   "extras": [],
+   "note": "stair-lift-lift-stair"
+  },
+  {
+   "id": "L20",
+   "family": "NB_CORE_REAR LOADED_2 LIFT_2026",
+   "cat": "deep",
+   "lifts": 2,
+   "stairs": 2,
+   "stair": "scissor",
+   "w": 8590,
+   "d": 5990,
+   "extras": [
+    "services",
+    "waste"
+   ]
+  },
+  {
+   "id": "L21",
+   "family": "NB_CORE_SPLIT CORE_2 LIFT_2026",
+   "cat": "deep",
+   "lifts": 2,
+   "stairs": 2,
+   "stair": "scissor",
+   "w": 9080,
+   "d": 8110,
+   "extras": [
+    "services",
+    "waste"
+   ],
+   "note": "lobby between stair and lift blocks"
+  },
+  {
+   "id": "L22",
+   "family": "NB_CORE_SPLIT CORE_3 LIFT_2026",
+   "cat": "deep",
+   "lifts": 3,
+   "stairs": 2,
+   "stair": "scissor",
+   "w": 9985,
+   "d": 8110,
+   "extras": [
+    "services"
+   ],
+   "note": "lobby between stair and lift blocks"
+  },
+  {
+   "id": "L23",
+   "family": "NB_CORE_MICRO CORE_2 LIFT SINGLE STAIR_OPTION 02_2026",
+   "cat": "kit",
+   "lifts": 2,
+   "stairs": 1,
+   "stair": "single",
+   "w": 13750,
+   "d": 3775,
+   "extras": [
+    "riser"
+   ],
+   "note": "lift 3000 | stair + riser 5850 | lobby ~1950 | lift 3000 (gaps measured)"
+  },
+  {
+   "id": "L24",
+   "family": "NB_MICRO CORE_2 LIFT_SCISSOR STAIR_2026",
+   "cat": "kit",
+   "lifts": 2,
+   "stairs": 2,
+   "stair": "scissor",
+   "w": 17150,
+   "d": 3075,
+   "extras": [
+    "riser"
+   ],
+   "note": "scissor stair + riser 8750 | lift 3200 | lobby ~2000 | lift 3200 (gaps measured)"
+  },
+  {
+   "id": "L25",
+   "family": "NB_MICRO CORE_2 LIFT SCISSOR STAIR_2026",
+   "cat": "kit",
+   "lifts": 2,
+   "stairs": 2,
+   "stair": "scissor",
+   "w": 18550,
+   "d": 3275,
+   "extras": [
+    "riser"
+   ],
+   "note": "lift 3400 | scissor stair | lift 3400"
+  },
+  {
+   "id": "L26",
+   "family": "NB_MICRO CORE_2 SINGLE STAIR 2 LIFT_2026",
+   "cat": "kit",
+   "lifts": 2,
+   "stairs": 2,
+   "stair": "two separate",
+   "w": 20450,
+   "d": 3850,
+   "extras": [
+    "riser"
+   ],
+   "note": "stair ~5050 | lobby ~1050 | 2 lifts + services ~7150 | lobby ~1950 | stair ~5250 (gaps measured)"
+  }
+ ],
+ "placement": "Every core can be moved, rotated (90-degree steps or free) and mirrored in either direction by the user."
+}
