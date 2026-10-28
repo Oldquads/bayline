@@ -145,7 +145,7 @@
         <div id="coreLib" class="corelib" role="list"></div>
         <div class="row">
           <div class="fld"><label class="cap" for="perLift">Apartments per lift</label><input id="perLift" type="number" step="5" min="10"></div>
-          <div class="fld"><label class="cap" for="aptDepth">Apartment depth m</label><input id="aptDepth" type="number" step="0.5" min="4"></div>
+          <div class="fld"><label class="cap" for="travelLim">Door to exit m</label><input id="travelLim" type="number" step="0.5" min="1"></div>
         </div>
         <p class="hint">Click a library core to swap it into the selected slot. Drag cores on the plan to move them. The yellow edge is the lobby side. Exits follow NCC D2D3 (2 above 25 m effective height) and D2D5 travel; confirm with your building surveyor.</p>
       </section>
@@ -171,6 +171,26 @@
           <div class="fld"><label class="cap" for="pA">Aisle</label><input id="pA" type="number" step="0.1" min="3"></div>
         </div>
         <div id="gridFit" class="gridfit"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-apt">
+        <h2 id="h-apt">Step 6 · Apartments <span id="aptState"></span></h2>
+        <div class="fld"><label class="cap" for="aTyp">Typical floor shown</label><select id="aTyp"></select></div>
+        <div style="overflow-x:auto">
+          <table class="specs" id="briefTable">
+            <thead><tr><th>Type</th><th>Min m²</th><th>Target</th><th>Max</th><th>Width m</th><th>Mix %</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="row"><button class="btn" id="addType" type="button">+ Unit type</button><button class="btn" id="aReset" type="button">Reset walls to automatic</button></div>
+        <div class="row">
+          <div class="fld"><label class="cap" for="aDepth">Apartment depth m</label><input id="aDepth" type="number" step="0.5" min="4"></div>
+          <div class="fld"><label class="cap" for="aCorr">Corridor m</label><input id="aCorr" type="number" step="0.1" min="1"></div>
+          <div class="fld"><label class="cap" for="aWall">Party wall m</label><input id="aWall" type="number" step="0.05" min="0.1"></div>
+        </div>
+        <div class="fld"><label class="cap" for="aSnap">Party walls and the grid</label><select id="aSnap"><option value="prefer">Prefer grid and half-grid lines</option><option value="only">Only on grid or half-grid lines</option><option value="off">Ignore the grid</option></select></div>
+        <div id="aptOut" class="aptout"></div>
+        <p class="hint">Width is the minimum facade frontage. Mix is by number of apartments. On the plan, drag a wall's dot along the facade to move it, double-click a dot to remove the wall, or double-click inside an apartment to split it.</p>
       </section>
     </aside>
 
@@ -207,6 +227,7 @@
 <script src="envelope.js"></script>
 <script src="grid.js"></script>
 <script src="cores.js"></script>
+<script src="apartments.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

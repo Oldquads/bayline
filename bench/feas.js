@@ -1,4 +1,4 @@
-// Feasibility page check: every bench lot under three zones (envelope, stack, auto core), plus screenshots.
+// Feasibility page check: every bench lot under three zones (envelope, stack, auto core, apartment layout), plus screenshots.
 // Needs Node Playwright and clipper-lib:  npm i --no-save clipper-lib@6.4.2
 // Run from the repo root:  node bench/feas.js            (screenshots go to bench/out/feas/)
 const {chromium}=require('playwright');const fs=require('fs'),path=require('path'),http=require('http');
@@ -19,7 +19,7 @@ const ZONES=[['MUZ1','MIXED USE ZONE - SCHEDULE 1',40],['GRZ1','GENERAL RESIDENT
   await pg.goto(`http://localhost:${srv.address().port}/feasibility/`);await pg.waitForFunction('window.__fz&&window.__fz.R&&window.__fz.ready()');
   let problems=0;
   for(const [code,desc,h] of ZONES){
-    let ms=0,gfa=0;const coreN={};
+    let ms=0,gfa=0,aptN=0,typN=0,offN=0,effS=0,effN=0;const coreN={};
     for(const [i,l] of lots.entries()){
       const r=await pg.evaluate(([doc,code,desc,h])=>{
         const t0=performance.now();
@@ -28,15 +28,17 @@ const ZONES=[['MUZ1','MIXED USE ZONE - SCHEDULE 1',40],['GRZ1','GENERAL RESIDENT
         const R=window.__fz.R,G=window.G,s=window.__fz.P.site.pts,site=[G.area(s)<0?s.slice().reverse():s];
         let out=0;for(const g of R.groups)out+=G.shapeArea(G.diff(g.fp,site));
         const P=window.__fz.P,cores=P.cores.map(c=>c.core+(c.variant?'+':'')).join(' ');
-        return {ms:performance.now()-t0,gfa:R.gfa,st:R.storeys,far:R.far,out,cores,warn:R.checks.filter(c=>c[0]==='warn').map(c=>c[1]),fails:R.checks.filter(c=>c[0]==='bad').map(c=>c[1])};
+        const T=window.__fz.typ(),apt=T?{n:T.units.length,eff:T.eff,off:T.units.filter(u=>!u.ok).length,mix:window.__fz.apts.mixText(window.__fz.apts.counts(T.units),P.apt.types)}:null;
+        return {ms:performance.now()-t0,gfa:R.gfa,st:R.storeys,far:R.far,out,cores,apt,apts:R.apts,warn:R.checks.filter(c=>c[0]==='warn').map(c=>c[1]),fails:R.checks.filter(c=>c[0]==='bad').map(c=>c[1])};
       },[{id:`b${i}-${code}`,address:l.name,spi:l.spi,ring:toLL(l.ring),front:l.front,roads:[]},code,desc,h]);
-      ms+=r.ms;gfa+=r.gfa;coreN[r.cores||'none']=(coreN[r.cores||'none']||0)+1;
+      ms+=r.ms;gfa+=r.gfa;aptN+=r.apts||0;if(r.apt){typN+=r.apt.n;offN+=r.apt.off;effS+=r.apt.eff;effN++}
+      if(!r.apt||!r.apt.n){problems++;console.log(`  ${code} lot ${i} ${l.name}: no apartments laid out`)}coreN[r.cores||'none']=(coreN[r.cores||'none']||0)+1;
       if(!r.cores){problems++;console.log(`  ${code} lot ${i} ${l.name}: no core fits`)}
-      if(process.env.VERBOSE)console.log(`  ${code} ${i} ${l.name}: ${r.st} st, core ${r.cores}, ${Math.round(r.ms)} ms`,r.warn.filter(w=>!/^Grid/.test(w)).map(w=>w.slice(0,90)));
+      if(process.env.VERBOSE)console.log(`  ${code} ${i} ${l.name}: ${r.st} st, core ${r.cores}, typical ${r.apt?`${r.apt.n} apts (${r.apt.mix}) ${Math.round(r.apt.eff*100)}% off-brief ${r.apt.off}`:'-'}, ${Math.round(r.ms)} ms`,r.warn.filter(w=>!/^Grid/.test(w)).map(w=>w.slice(0,90)));
       if(r.out>0.1||r.fails.length){problems++;console.log(`  ${code} lot ${i} ${l.name}: outside site ${r.out.toFixed(2)} m², fails ${JSON.stringify(r.fails)}`)}
       if(i===19||i===3){await (await pg.$('.sheet')).screenshot({path:`${OUT}/${code}_${i}_plan.png`});await pg.click('#v3d');await (await pg.$('.sheet')).screenshot({path:`${OUT}/${code}_${i}_3d.png`});await pg.click('#vPlan')}
     }
-    console.log(`${code}: ${lots.length} lots, total GFA ${Math.round(gfa).toLocaleString()} m², ${Math.round(ms/lots.length)} ms per lot, cores ${JSON.stringify(coreN)}`);
+    console.log(`${code}: ${lots.length} lots, total GFA ${Math.round(gfa).toLocaleString()} m², ${Math.round(ms/lots.length)} ms per lot, ${aptN} apartments (typical floors ${typN}, off brief ${offN}, mean efficiency ${Math.round(effS/Math.max(1,effN)*100)}%), cores ${Object.keys(coreN).length} patterns`);
   }
   console.log(`problems: ${problems} | page errors: ${errs.length?errs.join('; '):'none'}`);
   await b.close();srv.close();process.exit(problems||errs.length?1:0);

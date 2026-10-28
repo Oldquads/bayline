@@ -1,9 +1,9 @@
-/* Bayline Feasibility: site -> planning controls -> envelope -> level stack -> core -> grid. */
+/* Bayline Feasibility: site -> planning controls -> envelope -> level stack -> core -> grid -> apartments. */
 (function(){
 "use strict";
 const $=s=>document.querySelector(s);
 const {area,bbox,inward,shapeArea,projectRing}=window.G;
-const R=window.RULES,E=window.ENV,C=window.CORES,GR=window.GRID;
+const R=window.RULES,E=window.ENV,C=window.CORES,GR=window.GRID,AP=window.APTS;
 const fmt=(v,d=0)=>(v==null||!isFinite(v))?"–":(+v).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -30,6 +30,7 @@ function ensure(o){
   o.park={W:2.6,L:4.9,A:6.4,...(o.park||{})};
   o.coreRules={aptsPerLift:60,aptDepth:9,travel:6,exitsApart:45,...(o.coreRules||{})};
   o.coreView={cat:"all",suit:true,...(o.coreView||{})};
+  o.apt={...AP.defaults(),...(o.apt||{})};if(o.coreRules.aptDepth&&!(o.apt&&o.apt._d)){o.apt.depth=o.coreRules.aptDepth;o.apt._d=1}
   return o;
 }
 function gridOrigin(site){const a=site.pts[Math.min(site.front||0,site.pts.length-1)];return {ox:a.x,oy:a.y}}
@@ -46,7 +47,7 @@ function siteFromDoc(doc){
   return {id:doc.id||"site",address:doc.address||"",spi:doc.spi||"",ring:doc.ring,pts,front,roads:doc.roads||[],edges:E.classifyEdges(pts,front,doc.roads||[])};
 }
 function loadSite(doc,opts={}){
-  P.site=siteFromDoc(doc);P.sel=null;P.cores=[];P.coreSel=0;P.coreAuto=true;Object.assign(P.grid,gridOrigin(P.site),{angle:null});
+  P.site=siteFromDoc(doc);P.sel=null;P.apt.edits={};P.apt.typical=null;P.cores=[];P.coreSel=0;P.coreAuto=true;Object.assign(P.grid,gridOrigin(P.site),{angle:null});
   P.zone={key:"",code:"",desc:"",sched:"",auto:false};P.overlays=[];
   renderAll();
   if(opts.planning!==false)lookupPlanning();
@@ -69,7 +70,7 @@ function resetForZone(key){
   const z=R.ZONES[key];const siteArea=Math.abs(area(P.site.pts));
   const ctl=ctlFromPreset({height:z?z.height:null,storeys:z?z.storeys:null,far:null,coverage:z&&z.preset==="rescode"?60:null,garden:z&&z.garden?(R.gardenMin(siteArea)||null):null,roof:P.ctl.roof!=null?P.ctl.roof:1,excludeCarpark:P.ctl.excludeCarpark!==false},z?z.preset:"podiumTower");
   if(!z&&P.ctl.height)ctl.height=P.ctl.height;
-  P.ctl=ctl;P.stack=defaultStack(key);$("#maxMsg").textContent="";P.cores=[];P.coreSel=0;P.coreAuto=true;
+  P.ctl=ctl;P.stack=defaultStack(key);P.apt.edits={};P.apt.typical=null;$("#maxMsg").textContent="";P.cores=[];P.coreSel=0;P.coreAuto=true;
   fillToLimits(true);renderAll();
 }
 function fillToLimits(quiet){
@@ -87,13 +88,15 @@ function recompute(){
   RES=E.compute(P);MAX=E.maxOut(P);
   if(P.coreAuto&&!P.cores.length&&C.lib){const s=C.suggest(P,RES);P.coreAuto=false;if(s.length){P.cores=s;P.coreSel=0;renderCores()}}
   RES.coreArea=P.cores.map(C.geom).filter(Boolean).reduce((m,g)=>m+g.area,0);
+  layouts();
   if(C.lib)RES.checks.push(...C.checks(P,RES,P.cores));
+  RES.checks.push(...aptChecks());
   RES.checks.push(...gridChecks());
-  renderSummary();renderStackOut();renderSched();renderCoreNeed();renderGridFit();draw();save();
+  renderSummary();renderStackOut();renderSched();renderCoreNeed();renderGridFit();renderAptOut();draw();save();
 }
 let rT=null;function schedule(){clearTimeout(rT);rT=setTimeout(recompute,60)}
 
-function renderAll(){renderSite();renderPlanning();renderControls();renderStack();renderCores();renderGrid();recompute()}
+function renderAll(){renderSite();renderPlanning();renderControls();renderStack();renderCores();renderGrid();renderBrief();recompute()}
 
 /* site + edges */
 const EDGE_LABEL={street:"Street",side:"Side",rear:"Rear",lane:"Lane"};
@@ -220,7 +223,8 @@ function renderSummary(){
       <dt>Storeys</dt><dd>${lim(r.storeys,c.storeys)}</dd>
       <dt>Floor area ratio</dt><dd>${lim(r.far.toFixed(2),c.far&&(+c.far).toFixed(2))}:1</dd>
       <dt>Net saleable area</dt><dd>${fmt(r.nsa)} m²</dd>
-      <dt>Apartments</dt><dd>≈ ${fmt(r.apts)}</dd>
+      <dt>Apartments</dt><dd>${r.laid?"":"≈ "}${fmt(r.apts)}</dd>
+      ${r.typ?`<dt>Typical floor</dt><dd>${r.typ.units.length} apts · ${fmt(r.typ.eff*100)}% eff.</dd>`:""}
       ${r.spaces?`<dt>Car spaces (podium)</dt><dd>≈ ${fmt(r.spaces)}</dd>`:""}
       <dt>Core per floor</dt><dd>${P.cores.length?`${fmt(r.coreArea)} m²`:"–"}</dd>
       <dt>Site coverage</dt><dd>${lim(fmt(r.coverage),c.coverage,"%")}${c.coverage?"":"%"}</dd>
@@ -231,22 +235,22 @@ function renderSummary(){
 
 /* area schedule */
 function schedRows(){
-  const rows=RES.groups.slice().reverse().filter(g=>g.floors).map(g=>({name:g.name,levels:lvl(g.storeyFrom)+(g.floors>1?"–"+lvl(g.storeyTo):""),floors:g.floors,ftf:g.ftf,top:g.z1,plate:g.fpArea,core:RES.coreArea||0,gfa:g.gfa,use:R.USES[g.use].label,nsa:g.nsa,count:g.apts?`≈ ${g.apts} apts`:g.spaces?`≈ ${g.spaces} cars`:""}));
+  const rows=RES.groups.slice().reverse().filter(g=>g.floors).map(g=>({name:g.name,levels:lvl(g.storeyFrom)+(g.floors>1?"–"+lvl(g.storeyTo):""),floors:g.floors,ftf:g.ftf,top:g.z1,plate:g.fpArea,core:RES.coreArea||0,gfa:g.gfa,use:R.USES[g.use].label,nsa:g.nsa,count:g.layout?`${g.apts} apts (${g.layout.units.length}/floor)`:g.apts?`≈ ${g.apts} apts`:g.spaces?`≈ ${g.spaces} cars`:"",mix:g.layout?AP.mixText(AP.counts(g.layout.units),P.apt.types):""}));
   return rows;
 }
 function renderSched(){
   if(!RES)return;
   const rows=schedRows();
   $("#schedNote").textContent=`${RES.storeys} storeys · ${fmt(RES.height,1)} m`;
-  $("#sched").innerHTML=`<thead><tr><th>Group</th><th>Levels</th><th>Floors</th><th>F–F m</th><th>Top m</th><th>Plate m²</th><th>Core m²</th><th>GFA m²</th><th>Use</th><th>NSA m²</th><th>Count</th></tr></thead><tbody>`+
-    rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.levels}</td><td>${r.floors}</td><td>${fmt(r.ftf,2)}</td><td>${fmt(r.top,1)}</td><td>${fmt(r.plate)}</td><td>${fmt(r.core)}</td><td>${fmt(r.gfa)}</td><td style="font-family:var(--f-body)">${r.use}</td><td>${fmt(r.nsa)}</td><td>${r.count}</td></tr>`).join("")+
-    `<tr class="tot"><td>Total</td><td></td><td>${RES.storeys}</td><td></td><td>${fmt(RES.height,1)}</td><td></td><td></td><td>${fmt(RES.gfa)}</td><td></td><td>${fmt(RES.nsa)}</td><td>${RES.apts?`≈ ${RES.apts} apts`:""}</td></tr></tbody>`;
+  $("#sched").innerHTML=`<thead><tr><th>Group</th><th>Levels</th><th>Floors</th><th>F–F m</th><th>Top m</th><th>Plate m²</th><th>Core m²</th><th>GFA m²</th><th>Use</th><th>NSA m²</th><th>Count</th><th>Mix per floor</th></tr></thead><tbody>`+
+    rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.levels}</td><td>${r.floors}</td><td>${fmt(r.ftf,2)}</td><td>${fmt(r.top,1)}</td><td>${fmt(r.plate)}</td><td>${fmt(r.core)}</td><td>${fmt(r.gfa)}</td><td style="font-family:var(--f-body)">${r.use}</td><td>${fmt(r.nsa)}</td><td>${r.count}</td><td style="font-family:var(--f-body);text-align:left">${esc(r.mix)}</td></tr>`).join("")+
+    `<tr class="tot"><td>Total</td><td></td><td>${RES.storeys}</td><td></td><td>${fmt(RES.height,1)}</td><td></td><td></td><td>${fmt(RES.gfa)}</td><td></td><td>${fmt(RES.nsa)}</td><td>${RES.apts?`${RES.laid?"":"≈ "}${RES.apts} apts`:""}</td><td style="font-family:var(--f-body);text-align:left">${esc(totalMix())}</td></tr></tbody>`;
 }
 function saveCSV(){
   const rows=schedRows();const q=v=>`"${String(v).replace(/"/g,'""')}"`;
-  const lines=[["Site",P.site.address],["Zone",P.zone.code||P.zone.key],["Site area m2",Math.round(RES.siteArea)],["Cores",P.cores.map(c=>c.core+(c.variant?" ("+c.variant+")":"")).join(" + ")||"none"],["Grid m",`${P.grid.sx} x ${P.grid.sy}`],[],["Group","Levels","Floors","Floor to floor m","Top m","Floorplate m2","Core m2 per floor","GFA m2","Use","NSA m2","Count"],
-    ...rows.map(r=>[r.name,r.levels,r.floors,r.ftf,r.top.toFixed(1),Math.round(r.plate),Math.round(r.core),Math.round(r.gfa),r.use,Math.round(r.nsa),r.count]),
-    ["Total","",RES.storeys,"",RES.height.toFixed(1),"","",Math.round(RES.gfa),"",Math.round(RES.nsa),RES.apts]];
+  const lines=[["Site",P.site.address],["Zone",P.zone.code||P.zone.key],["Site area m2",Math.round(RES.siteArea)],["Cores",P.cores.map(c=>c.core+(c.variant?" ("+c.variant+")":"")).join(" + ")||"none"],["Grid m",`${P.grid.sx} x ${P.grid.sy}`],[],["Group","Levels","Floors","Floor to floor m","Top m","Floorplate m2","Core m2 per floor","GFA m2","Use","NSA m2","Count","Mix per floor"],
+    ...rows.map(r=>[r.name,r.levels,r.floors,r.ftf,r.top.toFixed(1),Math.round(r.plate),Math.round(r.core),Math.round(r.gfa),r.use,Math.round(r.nsa),r.count,r.mix]),
+    ["Total","",RES.storeys,"",RES.height.toFixed(1),"","",Math.round(RES.gfa),"",Math.round(RES.nsa),RES.apts,totalMix()]];
   const blob=new Blob([lines.map(l=>l.map(q).join(",")).join("\n")],{type:"text/csv"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`feasibility-${(P.site.address||"site").replace(/[^A-Za-z0-9]+/g,"-").toLowerCase()}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
 }
@@ -284,6 +288,7 @@ function drawPlan(){
     for(const r of gr.fp){path(g,T,r);g.fillStyle=hexA(col,sel?0.5:0.16);g.fill();g.lineWidth=sel?2.4:1.4;g.strokeStyle=col;g.stroke()}
   }
   drawGrid(g,T,c);
+  drawUnits(g,T,c);
   const ccol={...c,lift:css("--rule"),stair:c.bg,riser:hexA("#8E959A",0.55),lobby:c.sunk};
   P.cores.forEach((inst,i)=>{const geo=C.geom(inst);if(geo)C.draw(g,T,geo,ccol,i,i===P.coreSel)});
   // boundary, edges by type
@@ -299,6 +304,7 @@ function drawPlan(){
     const txt=`${i+1} ${EDGE_LABEL[t].toUpperCase()} · ${L.toFixed(1)} m${sb?` · ${sb.toFixed(1)} m setback`:""}`;
     const w=g.measureText(txt).width+8;q.x=Math.min(W-w/2-2,Math.max(w/2+2,q.x));g.fillStyle=c.bg;g.fillRect(q.x-w/2,q.y-8,w,16);g.fillStyle=t==="street"?c.ink:c.muted;g.fillText(txt,q.x,q.y);
   }
+  drawHandles(g,T,c);
   // north arrow + scale bar
   g.fillStyle=c.ink;g.beginPath();g.moveTo(W-28,18);g.lineTo(W-35,38);g.lineTo(W-28,33);g.lineTo(W-21,38);g.closePath();g.fill();
   g.font=`600 11px "Barlow",sans-serif`;g.fillText("N",W-28,48);
@@ -443,7 +449,7 @@ function renderGrid(){
   $("#gSx").value=g.sx;$("#gSy").value=g.sy;$("#gCol").value=g.col;$("#gSnap").checked=!!g.snap;
   $("#gAng").value=g.angle==null?"":g.angle;$("#gAng").placeholder=fmt(((GR.angle(P)*180/Math.PI)%180+180)%180,1)+" (street)";
   $("#pW").value=pk.W;$("#pL").value=pk.L;$("#pA").value=pk.A;
-  $("#perLift").value=P.coreRules.aptsPerLift;$("#aptDepth").value=P.coreRules.aptDepth;
+  $("#perLift").value=P.coreRules.aptsPerLift;$("#travelLim").value=P.coreRules.travel;
 }
 function gridSpan(){const gs=RES.groups.filter(g=>g.floors&&g.fp.length);if(!gs.length)return 30;const b=bbox(gs.flatMap(g=>g.fp.flat()));return Math.hypot(b.x1-b.x0,b.y1-b.y0)}
 function goodAlong(c,span){const out=[];for(let s=6;s<=12.001;s+=0.1){const S=+s.toFixed(1);let ok=false;const M=2*c.L+c.A,n=Math.max(2,Math.floor(span/S)+1);for(let o=0;o<M&&!ok;o+=0.05){let h=0;for(let k=0;k<n;k++){const x=((o+k*S)%M+M)%M;if(x>c.L+0.05&&x<c.L+c.A-0.05){h++;break}}if(!h)ok=true}if(ok)out.push(S)}return out}
@@ -476,6 +482,111 @@ function drawGrid(g,T,c){
   g.fillStyle=c.ink;for(const p of cols){const q=T(p);g.fillRect(q.x-s/2,q.y-s/2,s,s)}
 }
 let planT=null;
+
+/* ---------- Apartments ---------- */
+const TYPE_COLS=["#E9D8A6","#CFE3C1","#BCD6EA","#E5C6D3","#D9CBE8","#F2D3B0","#C9E4E0"];
+const typeCol=name=>{const i=P.apt.types.findIndex(t=>t.name===name);return i<0?"#E9A99E":TYPE_COLS[i%TYPE_COLS.length]};
+let layoutCache=new Map(),wallDrag=null,handles=[];
+function typicalGroup(){
+  const gs=RES?RES.groups.filter(g=>g.floors&&g.use==="apartments"&&g.fp.length):[];if(!gs.length)return null;
+  return gs.find(g=>g.id===P.apt.typical)||gs.reduce((m,g)=>g.floors>m.floors||(g.floors===m.floors&&g.z0>m.z0)?g:m,gs[0]);
+}
+const typLayout=()=>{const g=typicalGroup();return g&&g.layout};
+/* lay out every apartment floor (cached by plate, cores, brief, grid and hand edits) */
+function layouts(){
+  const geos=P.cores.map(C.geom).filter(Boolean);
+  const keyBase=JSON.stringify([P.cores,P.apt.depth,P.apt.corridor,P.apt.wall,P.apt.snap,P.apt.types,P.grid]);
+  const next=new Map();let apts=0,nsa=0,laid=false;
+  for(const g of RES.groups){
+    if(!(g.floors&&g.use==="apartments"&&g.fp.length)){continue}
+    const ed=P.apt.edits[g.id];
+    const key=keyBase+JSON.stringify(g.fp.map(r=>r.map(p=>[+p.x.toFixed(2),+p.y.toFixed(2)])))+JSON.stringify(ed||null);
+    let L=layoutCache.get(key);
+    if(!L){L=AP.layoutPlate(P,g.fp,geos,ed&&ed.cuts);
+      // hand edits made on a different floorplate no longer line up: drop them
+      if(ed&&(ed.perims||[]).some((pp,i)=>!L.loops[i]||Math.abs(L.loops[i].perim-pp)>0.5)){delete P.apt.edits[g.id];L=AP.layoutPlate(P,g.fp,geos,null)}}
+    next.set(key,L);g.layout=L;laid=true;
+    g.apts=L.units.length*g.floors;g.nsa=L.nsa*g.floors;
+  }
+  layoutCache=next;
+  if(laid){RES.apts=RES.groups.reduce((m,g)=>m+g.apts,0);RES.nsa=RES.groups.reduce((m,g)=>m+g.nsa,0);RES.laid=true;const t=typicalGroup();RES.typ=t&&t.layout}
+}
+function totalMix(){const c={};for(const g of RES.groups)if(g.layout)for(const [k,v] of Object.entries(AP.counts(g.layout.units)))c[k]=(c[k]||0)+v*g.floors;return AP.mixText(c,P.apt.types)}
+function editCuts(fn){
+  const g=typicalGroup();if(!g||!g.layout)return;
+  const L=g.layout,cuts=L.cuts.map(c=>({...c}));fn(cuts);
+  P.apt.edits[g.id]={cuts,perims:L.loops.map(l=>l.perim)};recompute();
+}
+function aptChecks(){
+  const out=[],g=typicalGroup();if(!g||!g.layout)return out;
+  const L=g.layout,types=P.apt.types,c=AP.counts(L.units),n=L.units.length||1,tot=types.reduce((m,t)=>m+(+t.mix||0),0)||1;
+  out.push(["info",`${g.name}: ${L.units.length} apartments a floor (${AP.mixText(c,types)||"none"}), ${fmt(L.nsa)} m² net, ${fmt(L.eff*100)}% of the ${fmt(L.plate)} m² plate.`]);
+  const off=types.filter(t=>t.mix>0||c[t.name]).map(t=>({t,got:(c[t.name]||0)/n*100,want:(+t.mix||0)/tot*100})).filter(x=>Math.abs(x.got-x.want)>10);
+  if(off.length)out.push(["warn",`Mix is off the brief: ${off.map(x=>`${x.t.name} ${fmt(x.got)}% vs ${fmt(x.want)}%`).join(", ")}. Floor shape and frontage limit it; adjust the brief, the depth or the walls.`]);
+  else if(L.units.length)out.push(["ok","Unit mix is within 10 points of the brief for every type."]);
+  const offb=L.units.filter(u=>!u.ok&&u.type!=="Oversize");
+  if(offb.length)out.push(["warn",`${offb.length} apartment${offb.length>1?"s fall":" falls"} between the brief's size ranges (${offb.map(u=>`${u.type} ${fmt(u.area)} m²`).slice(0,4).join(", ")}). Move a wall or widen the ranges.`]);
+  if(c.Oversize)out.push(["warn",`${c.Oversize} apartment${c.Oversize>1?"s are":" is"} bigger than any type in the brief (corner or leftover strip). Split ${c.Oversize>1?"them":"it"} or add a bigger type.`]);
+  if(L.left.length)out.push(["info",`${L.left.length} piece${L.left.length>1?"s":""} of facade strip (${fmt(L.left.reduce((m,u)=>m+u.area,0))} m²) too small for an apartment: storage, services or balcony.`]);
+  if(L.narrow)out.push(["warn",`The ${g.name} plate is narrower than two apartments and a corridor: apartments cut to ${fmt(L.d,1)} m deep.`]);
+  if(L.d>9.05)out.push(["warn",`Apartments ${fmt(L.d,1)} m deep: Clause 58 Standard D27 limits single-aspect habitable rooms to 9 m from a window (open-plan, 2.7 m ceiling).`]);
+  const commonPct=L.common/L.plate*100;
+  if(commonPct>28)out.push(["warn",`Corridors, cores and the middle of the plate take ${fmt(commonPct)}% of the ${g.name} floor. A deep plate wastes its middle: consider a courtyard, a slimmer tower or deeper apartments.`]);
+  return out;
+}
+function renderAptOut(){
+  const box=$("#aptOut");if(!box)return;const g=typicalGroup();
+  if(!g||!g.layout){box.innerHTML=`<p class="hint">No apartment floors. Set a level group's use to Apartments.</p>`;$("#aptState").textContent="";return}
+  const L=g.layout,c=AP.counts(L.units),n=L.units.length||1,types=P.apt.types,tot=types.reduce((m,t)=>m+(+t.mix||0),0)||1;
+  $("#aptState").textContent=`${L.units.length} / floor · ${fmt(L.eff*100)}% eff.`;
+  box.innerHTML=`<div class="aptsum">${esc(g.name)} · ${fmt(L.nsa)} m² net of ${fmt(L.plate)} m²${P.apt.edits[g.id]?" · walls edited by hand":""}</div>`+
+    types.filter(t=>t.mix>0||c[t.name]).map(t=>{const got=(c[t.name]||0)/n*100,want=(+t.mix||0)/tot*100;
+      return `<div class="mixrow"><b>${esc(t.name)}</b><div class="mixbar" title="target ${fmt(want)}%"><i style="width:${Math.min(100,got)}%;background:${typeCol(t.name)}"></i><u style="left:calc(${Math.min(100,want)}% - 1px)"></u></div><span>${c[t.name]||0} · ${fmt(got)}% / ${fmt(want)}%</span></div>`}).join("")+
+    (c.Oversize?`<div class="mixrow"><b>Over</b><div class="mixbar"><i style="width:${c.Oversize/n*100}%;background:${typeCol("Oversize")}"></i></div><span>${c.Oversize}</span></div>`:"");
+  const sel=$("#aTyp"),gs=RES.groups.filter(x=>x.floors&&x.use==="apartments"&&x.fp.length);
+  sel.innerHTML=gs.map(x=>`<option value="${x.id}"${x.id===g.id?" selected":""}>${esc(x.name)} (${x.floors} floor${x.floors>1?"s":""})</option>`).join("");
+}
+function renderBrief(){
+  const tb=$("#briefTable tbody");if(!tb)return;tb.innerHTML="";
+  P.apt.types.forEach((t,i)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td><input type="text" data-k="name" value="${esc(t.name)}" aria-label="Type ${i+1} name" style="border-left:6px solid ${typeCol(t.name)}"></td>`+
+      ["min","target","max","width","mix"].map(k=>`<td><input type="number" data-k="${k}" step="${k==="width"?0.1:1}" min="0" value="${t[k]}" aria-label="${esc(t.name)} ${k}"></td>`).join("")+
+      `<td>${P.apt.types.length>1?`<button class="x" type="button" aria-label="Remove ${esc(t.name)}">×</button>`:""}</td>`;
+    tr.querySelectorAll("input").forEach(inp=>inp.addEventListener("input",()=>{const k=inp.dataset.k;t[k]=k==="name"?inp.value:Math.max(0,parseFloat(inp.value)||0);schedule()}));
+    const x=tr.querySelector(".x");if(x)x.addEventListener("click",()=>{P.apt.types.splice(i,1);renderBrief();schedule()});
+    tb.appendChild(tr);
+  });
+  $("#aDepth").value=P.apt.depth;$("#aCorr").value=P.apt.corridor;$("#aWall").value=P.apt.wall;$("#aSnap").value=P.apt.snap;
+}
+function bindApts(){
+  $("#addType").addEventListener("click",()=>{const last=P.apt.types[P.apt.types.length-1]||{min:60,target:70,max:80,width:7};
+    P.apt.types.push({name:`Type ${P.apt.types.length+1}`,min:Math.round(last.max+5),target:Math.round(last.max+15),max:Math.round(last.max+25),width:+(last.width+1.5).toFixed(1),mix:0});renderBrief();schedule()});
+  $("#aReset").addEventListener("click",()=>{const g=typicalGroup();if(g)delete P.apt.edits[g.id];recompute()});
+  const an=(id,k,min)=>$(id).addEventListener("input",e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=min){P.apt[k]=v;P.apt.edits={};schedule()}});
+  an("#aDepth","depth",4);an("#aCorr","corridor",1);an("#aWall","wall",0.1);
+  $("#aSnap").addEventListener("change",e=>{P.apt.snap=e.target.value;schedule()});
+  $("#aTyp").addEventListener("change",e=>{P.apt.typical=e.target.value;recompute()});
+}
+function drawUnits(g,T,c){
+  const gr=typicalGroup();if(!gr||!gr.layout)return;const L=gr.layout;
+  // common area (corridors and the middle of the plate) under the apartments
+  for(const r of L.inner){path(g,T,r);g.fillStyle=hexA("#8E959A",0.12);g.fill()}
+  g.font=`600 11px "Barlow",sans-serif`;g.textAlign="center";g.textBaseline="middle";
+  const rpath=rs=>{g.beginPath();for(const r of rs)r.forEach((p,i)=>{const q=T(p);i?g.lineTo(q.x,q.y):g.moveTo(q.x,q.y)}),g.closePath()};
+  for(const u of L.units){rpath(u.rings);g.fillStyle=typeCol(u.type);g.fill("evenodd");g.lineWidth=1;g.strokeStyle=c.ink;g.stroke()}
+  for(const u of L.left){rpath(u.rings);g.fillStyle=hexA("#8E959A",0.35);g.fill("evenodd")}
+  for(const u of L.units){const q=T(window.G.centroid(u.poly));if(planT.k*Math.sqrt(u.area)<34)continue;g.fillStyle="#1E292D";g.fillText(u.type+(u.ok||u.type==="Oversize"?"":"*"),q.x,q.y-6);g.font=`500 10px "IBM Plex Mono",monospace`;g.fillText(fmt(u.area),q.x,q.y+7);g.font=`600 11px "Barlow",sans-serif`}
+  for(const u of L.units){const q=T(u.door);g.beginPath();g.arc(q.x,q.y,2.2,0,Math.PI*2);g.fillStyle=c.ink;g.fill()}
+}
+function drawHandles(g,T,c){
+  handles=[];const gr=typicalGroup();if(!gr||!gr.layout)return;const L=gr.layout;
+  L.cuts.forEach((ct,idx)=>{const lp=L.loops[ct.ring];if(!lp)return;const s=wallDrag&&wallDrag.idx===idx?wallDrag.s:ct.s;const {p,n}=AP.pointAt(lp,s),q=T(p),q2=T({x:p.x+n.x*L.d,y:p.y+n.y*L.d});
+    if(wallDrag&&wallDrag.idx===idx){g.beginPath();g.moveTo(q.x,q.y);g.lineTo(q2.x,q2.y);g.lineWidth=2.5;g.strokeStyle=c.accent;g.stroke()}
+    g.beginPath();g.arc(q.x,q.y,4.5,0,Math.PI*2);g.fillStyle=c.bg;g.fill();g.lineWidth=1.5;g.strokeStyle=c.ink;g.stroke();
+    handles.push({idx,ring:ct.ring,s:ct.s,x:q.x,y:q.y})});
+}
+function handleAt(x,y){let best=null;for(const h of handles){const d=Math.hypot(h.x-x,h.y-y);if(d<=8&&(!best||d<best.d))best={...h,d}}return best}
 
 /* ---------- Map + saved lots ---------- */
 function readSites(){try{return JSON.parse(localStorage.getItem(SITES_KEY)||"[]")}catch(e){return []}}
@@ -577,7 +688,8 @@ function bind(){
   $("#coreCat").addEventListener("change",e=>{P.coreView.cat=e.target.value;renderCoreLib();save()});
   $("#coreSuit").addEventListener("change",e=>{P.coreView.suit=e.target.checked;renderCoreLib();save()});
   $("#perLift").addEventListener("input",e=>{P.coreRules.aptsPerLift=Math.max(10,parseFloat(e.target.value)||60);schedule()});
-  $("#aptDepth").addEventListener("input",e=>{P.coreRules.aptDepth=Math.max(4,parseFloat(e.target.value)||9);schedule()});
+  $("#travelLim").addEventListener("input",e=>{P.coreRules.travel=Math.max(1,parseFloat(e.target.value)||6);schedule()});
+  bindApts();
   const gnum=(id,obj,k,min)=>$(id).addEventListener("input",e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=min){obj()[k]=v;schedule()}});
   gnum("#gSx",()=>P.grid,"sx",3);gnum("#gSy",()=>P.grid,"sy",3);gnum("#gCol",()=>P.grid,"col",0.2);
   gnum("#pW",()=>P.park,"W",2);gnum("#pL",()=>P.park,"L",4);gnum("#pA",()=>P.park,"A",3);
@@ -591,12 +703,25 @@ function bind(){
   let drag=null;
   const at=e=>{const r=cv.getBoundingClientRect();return planT.inv(e.clientX-r.left,e.clientY-r.top)};
   const hit=w=>{for(let i=P.cores.length-1;i>=0;i--){const geo=C.geom(P.cores[i]);if(geo&&window.G.pip(w,geo.outline))return i}return -1};
-  cv.addEventListener("pointerdown",e=>{if(P.view!=="plan"||!planT)return;const w=at(e),i=hit(w);if(i<0)return;
+  cv.addEventListener("pointerdown",e=>{if(P.view!=="plan"||!planT)return;
+    const r0=cv.getBoundingClientRect(),hd=handleAt(e.clientX-r0.left,e.clientY-r0.top);
+    if(hd){wallDrag={...hd};cv.setPointerCapture(e.pointerId);cv.classList.add("drag");e.preventDefault();return}
+    const w=at(e),i=hit(w);if(i<0)return;
     const inst=P.cores[i];drag={i,dx:inst.x-w.x,dy:inst.y-w.y};P.coreSel=i;cv.setPointerCapture(e.pointerId);cv.classList.add("drag");renderCores();e.preventDefault()});
   cv.addEventListener("pointermove",e=>{if(P.view!=="plan"||!planT)return;const w=at(e);
-    if(!drag){cv.classList.toggle("over",hit(w)>=0);return}
+    if(wallDrag){const L=typLayout();if(!L)return;const pr=AP.project(L.loops[wallDrag.ring],w);wallDrag.s=pr.s;wallDrag.moved=true;drawPlan();return}
+    if(!drag){const r0=cv.getBoundingClientRect();cv.classList.toggle("over",hit(w)>=0||!!handleAt(e.clientX-r0.left,e.clientY-r0.top));return}
     const inst=P.cores[drag.i];inst.x=w.x+drag.dx;inst.y=w.y+drag.dy;snapInst(inst);drawPlan()});
-  const end=()=>{if(!drag)return;drag=null;cv.classList.remove("drag");recompute()};
+  const end=()=>{if(wallDrag){const wd=wallDrag;wallDrag=null;cv.classList.remove("drag");if(wd.moved){const L=typLayout();editCuts(cs=>{cs[wd.idx]={ring:wd.ring,s:AP.clampCut(L.loops[wd.ring],wd.s,L.d)}})}return}
+    if(!drag)return;drag=null;cv.classList.remove("drag");recompute()};
+  cv.addEventListener("dblclick",e=>{if(P.view!=="plan"||!planT)return;const r0=cv.getBoundingClientRect(),hd=handleAt(e.clientX-r0.left,e.clientY-r0.top);
+    if(hd){editCuts(cs=>{cs.splice(hd.idx,1)});return}
+    const L=typLayout();if(!L)return;const w=at(e);
+    if(!L.units.some(u=>window.G.pip(w,u.poly)))return;
+    let best=null;L.loops.forEach((lp,ri)=>{const pr=AP.project(lp,w);if(!best||pr.d<best.d)best={...pr,ring:ri}});
+    const s2=AP.splitAt(L,best.ring,best.s),P0=L.loops[best.ring].perim;
+    if(L.cuts.some(c=>c.ring===best.ring&&Math.min(Math.abs(c.s-s2),P0-Math.abs(c.s-s2))<2)){$("#aptState").textContent="corner apartments can't split: walls stay one apartment depth from a corner";return}
+    editCuts(cs=>{cs.push({ring:best.ring,s:s2})})});
   cv.addEventListener("pointerup",end);cv.addEventListener("pointercancel",end);
   let rz=null;new ResizeObserver(()=>{clearTimeout(rz);rz=setTimeout(draw,60)}).observe(cv);
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change",draw);
@@ -610,5 +735,5 @@ if(mapOK&&P.site.ring)VM.goToRing(P.site.ring,P.site.address);
 renderSites();
 
 /* test hook */
-window.__fz={get P(){return P},get R(){return RES},get max(){return MAX},loadSite,setPlanning:r=>{setPlanning(r);renderPlanning()},recompute,fill:()=>{fillToLimits(false);renderStack();recompute()},set:(fn)=>{fn(P);renderAll()},cores:C,grid:GR,ready:()=>coresReady};
+window.__fz={get P(){return P},get R(){return RES},get max(){return MAX},loadSite,setPlanning:r=>{setPlanning(r);renderPlanning()},recompute,fill:()=>{fillToLimits(false);renderStack();recompute()},set:(fn)=>{fn(P);renderAll()},cores:C,grid:GR,apts:AP,typ:()=>typLayout(),editCuts,ready:()=>coresReady};
 })();

@@ -185,3 +185,14 @@ body{margin:0}
 .gridfit{display:flex;flex-direction:column;gap:6px}
 .gridfit p{margin:0;font-size:12.5px;line-height:1.4;display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start}
 #view.drag{cursor:grabbing}#view.over{cursor:grab}
+/* apartments */
+.aptout{display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.mixrow{display:grid;grid-template-columns:52px minmax(0,1fr) 88px;gap:8px;align-items:center}
+.mixrow b{font:600 12px var(--f-mono)}
+.mixbar{position:relative;height:12px;background:var(--bg);border:1px solid var(--rule);border-radius:2px}
+.mixbar i{position:absolute;left:0;top:0;bottom:0;border-radius:1px}
+.mixbar u{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
+.mixrow span{font:500 11.5px var(--f-mono);color:var(--muted);text-align:right}
+.aptsum{font:500 12px var(--f-mono);color:var(--muted)}
+#briefTable input[type=text]{min-width:54px}
+#briefTable input[type=number]{min-width:54px}

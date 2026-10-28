@@ -9,7 +9,7 @@ Live at **https://oldquads.github.io/bayline/feasibility/**. The car park page (
 3. Form up the building envelope → **done** (setback bands by height, ResCode B17 profile, coverage / garden area pull-in)
 4. Select a core configuration → **done** (phase 2)
 5. Apply a structural grid to the typical floor → **done** (phase 2)
-6. Cut the floor into apartments from a sizing brief → phase 3
+6. Cut the floor into apartments from a sizing brief → **done** (phase 3)
 7. Test the parking arrangement → phase 4 (reuse the car park engine, add columns, core and ramp as obstacles)
 
 Phase 5: scenario compare, exports (PDF, DXF), proper 3D.
@@ -71,3 +71,32 @@ Car-park fit: across the bays, how many bays fit between columns (spacing − co
 Checked by `node bench/feas.js`: every lot under MUZ (40 m), GRZ and RGZ gets a core layout that passes travel, no floorplate leaves the site, no control fails, no page errors.
 
 Known simplifications: the floorplate is the whole envelope, so big sites get many cores (that is the honest answer for one floorplate filling the site; phase 3 apartment layout and courtyards will shrink it). The core library filter judges each core against its share of the needs once there are 2+ cores.
+
+## Phase 3: apartment layout
+
+`feasibility/apartments.js`, Step 6 on the page. Every apartment level group is laid out; the plan shows the typical floor (the apartment group with most floors, or the one picked).
+
+| Setting | Default | Notes |
+|---|---|---|
+| Brief | Studio 32/38/44 m², 3.6 m, 0% · 1B 48/52/58, 5.6 m, 40% · 2B 68/75/82, 7.6 m, 45% · 3B 92/100/110, 9.6 m, 15% | min / target / max area, minimum facade width, mix by count. A placeholder Melbourne brief until the user sends theirs. |
+| Apartment depth | 9 m | Also the corridor line used for doors and the travel check. Clause 58 D27: 9 m for open plan with 2.7 m ceilings. |
+| Corridor | 1.6 m | Used when the plate is narrower than two apartments and a corridor (apartments get shallower). |
+| Party wall | 0.2 m | Thickness of the cuts. |
+| Grid | prefer | Walls prefer grid lines, then half-grid lines; or only on them; or ignore the grid. |
+
+How a floor is cut (general moves, no site fixes):
+
+1. **Strip.** Sellable zone = the floorplate less its inset by the apartment depth, less the cores. The middle (inset) is corridor / common area.
+2. **Facade loops.** Each ring of the plate is a loop sampled every 0.4 m plus every grid and half-grid crossing. No wall within one apartment depth of an outside corner (turn over 25°), so corner units wrap the corner.
+3. **Areas.** Each edge owns the strip between its corner mitres; the area between consecutive samples is the slab square to the facade (mitred at corners) clipped to that share. Wall thickness × depth is taken off each unit's estimate.
+4. **Walls.** Shortest path round the loop: unit cost = 8 × ((area − target) / target)² + a per-type weight − a grid bonus; leftover stretches (core in the way) are allowed as voids; a stretch longer than the biggest unit closes as one oversize unit at a heavy penalty. Several start points; the per-type weights are tuned over 7 rounds so counts approach the mix.
+5. **Units.** The strip is cut with walls; each piece (outer ring plus holes) is typed by area: in a wanted type's range = that type; in a 0%-mix type's range or between ranges = nearest type, flagged off brief; above every range = oversize; below 85% of the smallest wanted minimum = leftover (storage / services / balcony). Door = nearest point on the corridor line.
+6. **Totals.** Apartments and NSA per group = the layout × floors (exact, replacing the NSA ÷ average estimate). Doors feed the core travel check.
+
+Hand edits (per level group, stored in `P.apt.edits`): drag a wall dot along the facade, double-click a dot to remove the wall, double-click inside an apartment to split it midway between its walls. Walls are kept out of corner zones; corner apartments can't be split. Edits are dropped when the floorplate changes; "Reset walls to automatic" clears them.
+
+Checks: apartments per typical floor and efficiency, mix within 10 points of the brief, off-brief and oversize units, leftover strip, narrow plates, depth over 9 m (D27), corridors / middle over 28% of the floor.
+
+`node bench/feas.js` now also fails a lot with no apartments laid out, and reports apartments, off-brief units and mean typical-floor efficiency per zone. Current: MUZ 40 m 5,251 apartments (off brief 49 of 455 on typical floors, 64% mean efficiency), GRZ 1,262 (39 of 418, 70%), RGZ 1,433 (40 of 334, 70%). Efficiency is low on whole-envelope plates because their middle is wasted; the check says so.
+
+Tried and dropped: placing cores in the plate's middle first (outside the apartment strip). It ran 4-5× slower for ±1 point of efficiency.

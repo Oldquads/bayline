@@ -101,11 +101,14 @@ function place(P,R,inst,others,target){
   }
   return best&&best.inst;
 }
-/* Where apartment doors are: on the corridor line, one apartment depth in from each facade of every
-   apartment floor (or the middle of the plate where it is thinner than two apartments). */
+/* Where apartment doors are: the laid-out apartments' doors when the floor has a layout; otherwise
+   on the corridor line, one apartment depth in from each facade of every apartment floor (or the
+   middle of the plate where it is thinner than two apartments). */
+const aptDepth=P=>+(P.apt&&P.apt.depth)||9;
 function doorPoints(P,R){
-  const depth=+P.coreRules.aptDepth||9,pts=[],seen=new Set();
+  const depth=aptDepth(P),pts=[],seen=new Set();
   for(const gr of R.groups){if(!gr.floors||gr.use!=="apartments"||!gr.fp.length)continue;
+    if(gr.layout){for(const u of gr.layout.units)pts.push({...u.door,g:gr.name});continue}
     let line=offsetShape(gr.fp,-depth);
     if(!line.length)line=offsetShape(gr.fp,-depth/2);
     if(!line.length)line=gr.fp;
@@ -218,8 +221,8 @@ function checks(P,R,cores){
   }
   for(let a=0;a<geos.length;a++)for(let b=a+1;b<geos.length;b++){const o=shapeArea(window.G.inter([geos[a].outline],[geos[b].outline]));if(o>0.05)out.push(["bad",`Cores ${a+1} and ${b+1} overlap.`])}
   // rough travel: furthest apartment door from a stair
-  const t=travel(P,R,cores),depth=+P.coreRules.aptDepth||9,lim=+P.coreRules.travel||6,apart=+P.coreRules.exitsApart||45;
-  if(t)out.push(!t.p?["ok",`Every apartment door (taken on a corridor ${depth} m in from the facade) is within ${lim} m of a stair${t.choice?`, or between two stairs in different directions no more than ${apart} m apart`:""} (NCC D2D5 / D2D6, straight-line estimate).`]
+  const t=travel(P,R,cores),laid=R.groups.some(g=>g.layout),depth=aptDepth(P),lim=+P.coreRules.travel||6,apart=+P.coreRules.exitsApart||45;
+  if(t)out.push(!t.p?["ok",`Every apartment door (${laid?"from the apartment layout":`taken on a corridor ${depth} m in from the facade`}) is within ${lim} m of a stair${t.choice?`, or between two stairs in different directions no more than ${apart} m apart`:""} (NCC D2D5 / D2D6, straight-line estimate).`]
     :["warn",`Apartment doors on ${t.where} are up to ${f1(t.worst+lim)} m from a stair with no second stair the other way within ${apart} m; NCC D2D5 allows ${lim} m to an exit or point of choice. Add or move a core, or plan a fire-engineered solution.`]);
   return out;
 }
