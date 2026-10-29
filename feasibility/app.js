@@ -31,7 +31,7 @@ function ensure(o){
   o.coreRules={aptsPerLift:60,aptDepth:8,travel:6,exitsApart:45,fire:"fe",feTravel:25,...(o.coreRules||{})};
   o.mass={...window.MASS.defaults(),...(o.mass||{})};
   o.coreView={cat:"all",suit:true,...(o.coreView||{})};
-  o.apt={...AP.defaults(),...(o.apt||{})};if(!o.apt._g){o.apt.snap="only";o.apt._g=1}if(!o.apt._m){o.apt.maxDepth=10;o.apt._m=1}for(const t of o.apt.types)if(t.beds==null)t.beds=PK.bedsOf(t);if(o.coreRules.aptDepth&&!(o.apt&&o.apt._d)){o.apt.depth=o.coreRules.aptDepth;o.apt._d=1}
+  o.apt={...AP.defaults(),...(o.apt||{})};if(!o.apt._g2){o.apt.snap="prefer";o.apt.wall=0.2;o.apt._g2=1}if(!o.apt._m){o.apt.maxDepth=10;o.apt._m=1}for(const t of o.apt.types){if(t.beds==null)t.beds=PK.bedsOf(t);if(t.bays==null)t.bays=AP.baysOf(t)}if(o.coreRules.aptDepth&&!(o.apt&&o.apt._d)){o.apt.depth=o.coreRules.aptDepth;o.apt._d=1}
   return o;
 }
 function gridOrigin(site){const a=site.pts[Math.min(site.front||0,site.pts.length-1)];return {ox:a.x,oy:a.y}}
@@ -547,7 +547,7 @@ function aptChecks(){
   if(offb.length)out.push(["warn",`${offb.length} apartment${offb.length>1?"s fall":" falls"} between the brief's size ranges (${offb.map(u=>`${u.type} ${fmt(u.area)} m²`).slice(0,4).join(", ")}). Move a wall or widen the ranges.`]);
   if(c.Oversize)out.push(["warn",`${c.Oversize} apartment${c.Oversize>1?"s are":" is"} bigger than any type in the brief (corner or leftover strip). Split ${c.Oversize>1?"them":"it"} or add a bigger type.`]);
   if(L.left.length)out.push(["info",`${L.left.length} piece${L.left.length>1?"s":""} of facade strip (${fmt(L.left.reduce((m,u)=>m+u.area,0))} m²) too small for an apartment: storage, services or balcony.`]);
-  if(L.deep)out.push(["info",`${g.name}: apartments deepened to ${fmt(L.d,1)} m so the corridor stays ${fmt(P.apt.corridor,1)} m (maximum depth ${fmt(P.apt.maxDepth,1)} m).`]);
+  if(L.deep)out.push(["info",`${g.name}: apartments deepened to ${fmt(L.d,1)} m so the corridor stays ${fmt(P.apt.corridor,1)} m.`]);
   if(L.narrow)out.push(["warn",`The ${g.name} plate is narrower than two apartments and a corridor: apartments cut to ${fmt(L.d,1)} m deep.`]);
   if(L.d>9.05)out.push(["warn",`Apartments ${fmt(L.d,1)} m deep: Clause 58 Standard D27 limits single-aspect habitable rooms to 9 m from a window (open-plan, 2.7 m ceiling).`]);
   P.cores.forEach((inst,i)=>{const geo=C.geom(inst);if(geo&&L.corridor.length&&window.G.shapeArea(window.G.inter([window.G.offsetShape([geo.outline],0.3)[0]||geo.outline],L.corridor))<0.3)out.push(["warn",`Core C${i+1} doesn't reach the ${fmt(P.apt.corridor,1)} m corridor on ${g.name}. Move it next to the corridor.`])});
@@ -572,21 +572,20 @@ function renderBrief(){
   P.apt.types.forEach((t,i)=>{
     const tr=document.createElement("tr");
     tr.innerHTML=`<td><input type="text" data-k="name" value="${esc(t.name)}" aria-label="Type ${i+1} name" style="border-left:6px solid ${typeCol(t.name)}"></td>`+
-      ["beds","min","target","max","width","mix"].map(k=>`<td><input type="number" data-k="${k}" step="${k==="width"?0.1:1}" min="0" value="${t[k]}" aria-label="${esc(t.name)} ${k}"></td>`).join("")+
+      ["beds","bays","mix"].map(k=>`<td><input type="number" data-k="${k}" step="${k==="bays"?0.5:1}" min="0" value="${k==="bays"?AP.baysOf(t):t[k]}" aria-label="${esc(t.name)} ${k}"></td>`).join("")+
       `<td>${P.apt.types.length>1?`<button class="x" type="button" aria-label="Remove ${esc(t.name)}">×</button>`:""}</td>`;
     tr.querySelectorAll("input").forEach(inp=>inp.addEventListener("input",()=>{const k=inp.dataset.k;t[k]=k==="name"?inp.value:Math.max(0,parseFloat(inp.value)||0);schedule()}));
     const x=tr.querySelector(".x");if(x)x.addEventListener("click",()=>{P.apt.types.splice(i,1);renderBrief();schedule()});
     tb.appendChild(tr);
   });
-  $("#aDepth").value=P.apt.depth;$("#aCorr").value=P.apt.corridor;$("#aMaxD").value=P.apt.maxDepth;$("#aWall").value=P.apt.wall;$("#aSnap").value=P.apt.snap;
+  $("#aDepth").value=P.apt.depth;$("#aCorr").value=P.apt.corridor;
 }
 function bindApts(){
-  $("#addType").addEventListener("click",()=>{const last=P.apt.types[P.apt.types.length-1]||{min:60,target:70,max:80,width:7};
-    P.apt.types.push({name:`Type ${P.apt.types.length+1}`,beds:Math.min(4,(+last.beds||2)+1),min:Math.round(last.max+5),target:Math.round(last.max+15),max:Math.round(last.max+25),width:+(last.width+1.5).toFixed(1),mix:0});renderBrief();schedule()});
+  $("#addType").addEventListener("click",()=>{const last=P.apt.types[P.apt.types.length-1]||{beds:2,bays:1.5};
+    P.apt.types.push({name:`Type ${P.apt.types.length+1}`,beds:Math.min(4,(+last.beds||2)+1),bays:AP.baysOf(last)+0.5,mix:0});renderBrief();schedule()});
   $("#aReset").addEventListener("click",()=>{const g=typicalGroup();if(g)delete P.apt.edits[g.id];recompute()});
   const an=(id,k,min)=>$(id).addEventListener("input",e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=min){P.apt[k]=v;P.apt.edits={};schedule()}});
-  an("#aDepth","depth",4);an("#aCorr","corridor",1);an("#aMaxD","maxDepth",4);an("#aWall","wall",0.1);
-  $("#aSnap").addEventListener("change",e=>{P.apt.snap=e.target.value;schedule()});
+  an("#aDepth","depth",4);an("#aCorr","corridor",1);
   $("#aTyp").addEventListener("change",e=>{P.apt.typical=e.target.value;recompute()});
 }
 function drawUnits(g,T,c){
