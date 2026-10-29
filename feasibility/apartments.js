@@ -189,7 +189,7 @@ function typeOf(a,types){
 }
 /* Double-loaded rows (as in built schemes): a straight corridor down the middle of the wing, end to end,
    and one row of apartments each side from the facade to the corridor. Party walls sit on grid lines and
-   mid-bay lines (and at core faces); each unit is a whole number of half bays and its type is its bay count
+   mid-bay lines only; each unit is a whole number of half bays and its type is its bay count
    (1B = 1 bay, 2B = 1.5, 3B = 2). The end unit of a row takes the part bay up to the end of the wing. Which
    walls is a shortest-path choice per row, with per-type weights tuned so the counts approach the mix. */
 function rowPlate(P,bars,cores){
@@ -203,15 +203,16 @@ function rowPlate(P,bars,cores){
     let cor=inter([b.pc[0]],[b.rect(b.a0-E,b.a1+E,mid-h,mid+h)]);if(coreShapes.length)cor=diff(cor,coreShapes);corridor.push(...cor);
     for(const [y0,y1,dy] of [[b.c0-E,mid-h,mid-h],[mid+h,b.c1+E,mid+h]]){
       const full=inter([b.pc[0]],[b.rect(b.a0-E,b.a1+E,y0,y1)]);let sh=full;if(coreShapes.length)sh=diff(sh,coreShapes);if(shapeArea(sh)<1)continue;
-      // wall positions: grid and mid-bay lines, core faces, the row ends
+      // wall positions: grid and mid-bay lines and the row ends
       const xs=new Set([b.a0,b.a1]);
       for(let k=Math.ceil(b.a0/hb);k*hb<b.a1;k++){const x=+(k*hb).toFixed(3);if(x>b.a0+0.3&&x<b.a1-0.3)xs.add(x)}
-      for(const c of coreShapes){const as=c.map(b.toA),lo=Math.min(...as),hi=Math.max(...as);if(hi>b.a0&&lo<b.a1){if(lo>b.a0+0.3)xs.add(+lo.toFixed(3));if(hi<b.a1-0.3)xs.add(+hi.toFixed(3))}}
+      // no walls at core faces: walls follow the grid, and a unit beside a core just loses the area the core takes
       const X=[...xs].sort((p,q)=>p-q);
       // a stretch is blocked where a core takes most of the row there
       const ringsAC=sh2=>sh2.map(r=>r.map(b.toAC)),Rs=ringsAC(sh),Rf=ringsAC(full);
       const secLen=(R,x)=>{let L=0;for(const r of R){const cs=[];for(let i=0;i<r.length;i++){const [pa,pc2]=r[i],[qa,qc]=r[(i+1)%r.length];if((pa-x)*(qa-x)<0)cs.push(pc2+(qc-pc2)*(x-pa)/(qa-pa))}cs.sort((u,v)=>u-v);for(let i=0;i+1<cs.length;i+=2)L+=cs[i+1]-cs[i]}return L};
-      const blocked=X.slice(1).map((x,i)=>{const xm=(X[i]+x)/2;return secLen(Rs,xm)<0.5*secLen(Rf,xm)});
+      // blocked only where a core takes nearly the full depth of the row; otherwise the apartment there is notched round the core
+      const blocked=X.slice(1).map((x,i)=>{const xm=(X[i]+x)/2;return secLen(Rs,xm)<0.2*secLen(Rf,xm)});
       rows.push({b,sh,X,blocked,door:dy,y0,y1});
     }
   }
