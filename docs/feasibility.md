@@ -81,7 +81,7 @@ Known simplifications: the floorplate is the whole envelope, so big sites get ma
 | Brief | Studio 32/38/44 m², 3.6 m, 0% · 1B 48/52/58, 5.6 m, 40% · 2B 68/75/82, 7.6 m, 45% · 3B 92/100/110, 9.6 m, 15% | min / target / max area, minimum facade width, mix by count. A placeholder Melbourne brief until the user sends theirs. |
 | Apartment depth | 8 m (was 9) | Also the corridor line used for doors and the travel check, and half the wing depth in massing. The reference schemes use 7.5-8.5 m; Clause 58 D27 caps single-aspect open plan at 9 m with 2.7 m ceilings. |
 | Corridor | 1.6 m | Always this width. A plate wider than two apartments + corridor gets deeper apartments (up to the maximum depth); a thinner one gets shallower apartments. |
-| Max apartment depth | 12 m | Beyond this (a compact tower) apartments keep the set depth and the middle is a core zone. The no-wall zone at outside corners uses the set depth, not the deepened one. |
+| Max apartment depth | 10 m | Beyond this (a compact tower) apartments keep the set depth and the middle is a core zone. The no-wall zone at outside corners uses the set depth, not the deepened one. |
 | Party wall | 0.2 m | Thickness of the cuts. |
 | Party walls and the grid | on grid lines | Walls only on grid lines (default, from the user's markup); or on grid and half-grid lines; or anywhere. |
 
@@ -133,7 +133,7 @@ What the planner now does (general moves):
 - **Travel to exits** (Step 4): "Fire-engineered" (default, as in the reference schemes) passes a door within 25 m (editable) of a stair in its own wing and says a performance solution is needed; "NCC D2D5 Deemed-to-Satisfy" is the earlier 6 m / point-of-choice rule.
 - **Cores follow the building.** Suggested cores are re-suggested when the stack, massing, grid or rules change. Cores moved, swapped, added or edited by hand stay put.
 - **Apartment depth default 8 m** (was 9).
-- **Corridor stays 1.6 m** (user: "the area should go inside apartments"). Earlier, a plate wider than two apartments + corridor left the extra width as a wide grey corridor. Now apartments deepen to fill it, up to 12 m (`APTS.depthFor`); deeper than 9 m is flagged against Clause 58 D27.
+- **Corridor stays 1.6 m** (user: "the area should go inside apartments"). Earlier, a plate wider than two apartments + corridor left the extra width as a wide grey corridor. Now apartments deepen to fill it, up to 10 m (`APTS.depthFor`; was 12); deeper than 9 m is flagged against Clause 58 D27.
 - **Corner rule:** a step under 1 m in a facade (where a wing meets a setback line) no longer counts as an outside corner, so it can't block walls over a whole wing end.
 
 **Bench** (`node bench/feas.js`, 21 lots × 3 zones, before → after): problems 0, no page errors.
@@ -161,7 +161,18 @@ With the default 8.4 m grid and 10-11 m deep apartments, one bay is about 90 m²
 
 Bench after rows (problems 0, no page errors), against the massing change before it: apartments MUZ 5,376 → 3,624, GRZ 1,269 → 957, RGZ 1,481 → 1,055; mean typical efficiency 85/90/88% → 83/84/84%; off-brief units up (MUZ 120 → 157). The drop is the 8.4 m grid: every apartment is a whole number of 8.4 m bays. The open question for the user is the bay module along the wings.
 
-## Phase 4: parking
+## Skewed and stepped lots (user's CBD lanes lot, bench lot 21)
+
+The user's 2,836 m² CBD lot (streets and lanes, a step on one lane) came out as six oversize units round a stub corridor. Moves:
+- **Grid follows the lot's long side** when the street edge is skewed to it by more than 10° (`GRID.autoAngle`; edges in line count as one side). Rectangular lots are unchanged.
+- **Wing test by cross-section:** a plate is a wing when its median width (sections every metre) fits two apartments of the maximum depth plus the corridor; the corridor runs down the middle of the median section, so a wider end or a step no longer sends it to the facade-strip method.
+- **Massing bars of variable width:** bars from 2 × depth + corridor up to 2 × maximum depth + corridor, in 1 m steps; floor deeper than the brief's depth scores at 0.6, so the planner trims an uneven envelope to one straight wing of even depth instead of keeping a 12 m deep row on one side.
+- **Mix balancing counts oversize units** (it used to leave them out, so swapping a 2B for an oversize unit looked like an improvement).
+- **Cores beside the corridor:** a core must open onto the corridor without cutting it in two.
+- **Maximum apartment depth 10 m** (was 12).
+
+Result on the lot: 6 apartments a floor (5 oversize) → 18 (5 × 1B, 10 × 2B, 2 × 3B, 1 oversize), 85% efficiency, one straight corridor.
+
 
 `feasibility/parking.js`, Step 7 and the Parking view.
 

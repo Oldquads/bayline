@@ -9,7 +9,7 @@
 const {area,bbox,centroid,diff,inter,union,shapeArea,offsetShape,D2R}=window.G;
 const STEP=0.4,EXT=1.5;
 
-function defaults(){return {depth:8,maxDepth:12,corridor:1.6,wall:0.2,snap:"only",typical:null,edits:{},
+function defaults(){return {depth:8,maxDepth:10,corridor:1.6,wall:0.2,snap:"only",typical:null,edits:{},
   types:[{name:"Studio",beds:0,min:32,target:38,max:44,width:3.6,mix:0},{name:"1B",beds:1,min:48,target:52,max:58,width:5.6,mix:40},
          {name:"2B",beds:2,min:68,target:75,max:82,width:7.6,mix:45},{name:"3B",beds:3,min:92,target:100,max:110,width:9.6,mix:15}]}}
 
@@ -93,7 +93,8 @@ function solveLoop(R,slab,types,lam,snap,st,wallLoss){
   const cost=new Float64Array(m+1).fill(Infinity),from=new Int32Array(m+1).fill(-1),what=new Array(m+1);
   cost[0]=0;
   const sv=new Float64Array(m+1);for(let k=0;k<=m;k++)sv[k]=sAt(k);
-  const cutOK=k=>k===m||pos(k).ok&&(snap!=="only"||pos(k).kind==="grid");
+  // odd-shaped plates: "on grid lines" also allows half-grid lines, as facades rarely meet the grid square
+  const cutOK=k=>k===m||pos(k).ok&&(snap!=="only"||pos(k).kind==="grid"||pos(k).kind==="half");
   const bonus=k=>{if(k===m)return 0;const kd=pos(k).kind;return snap==="off"?0:kd==="grid"?-0.12:kd==="half"?-0.05:0};
   for(let k=0;k<m;k++){
     if(cost[k]===Infinity)continue;
@@ -150,13 +151,23 @@ function barOf(P,pc){
   if(pc.length!==1)return null;
   const F=window.GRID.frame(P),q=pc[0].map(p=>F.toG(p));
   const u0=Math.min(...q.map(p=>p.u)),u1=Math.max(...q.map(p=>p.u)),v0=Math.min(...q.map(p=>p.v)),v1=Math.max(...q.map(p=>p.v));
-  const alongU=u1-u0>=v1-v0,a0=alongU?u0:v0,a1=alongU?u1:v1,c0=alongU?v0:u0,c1=alongU?v1:u1,W=c1-c0;
-  const cw=+P.apt.corridor||1.6,dMax=Math.max(+P.apt.depth||8,+P.apt.maxDepth||12),d=(W-cw)/2;
-  if(d<4||d>dMax+0.05||Math.abs(area(pc[0]))<0.85*(a1-a0)*W)return null;
+  const alongU=u1-u0>=v1-v0,a0=alongU?u0:v0,a1=alongU?u1:v1;
+  // the wing's width along its length (cross-sections every metre): the corridor goes down the middle of
+  // the typical (median) section, so a wider end or a step doesn't stop the plate being a wing
+  const qa=q.map(p=>alongU?[p.u,p.v]:[p.v,p.u]),secs=[];
+  for(let x=a0+0.5;x<a1-0.5;x+=1){const cs=[];for(let i=0;i<qa.length;i++){const [pa,pc2]=qa[i],[qa2,qc]=qa[(i+1)%qa.length];if((pa-x)*(qa2-x)<0)cs.push(pc2+(qc-pc2)*(x-pa)/(qa2-pa))}
+    if(cs.length>=2)secs.push([Math.min(...cs),Math.max(...cs)])}
+  if(secs.length<4)return null;
+  const med=arr=>arr.slice().sort((x,y)=>x-y)[Math.floor(arr.length/2)];
+  const Wm=med(secs.map(([l,h])=>h-l)),mid0=med(secs.map(([l,h])=>(l+h)/2));
+  const c0=Math.min(...secs.map(x=>x[0])),c1=Math.max(...secs.map(x=>x[1]));
+  const cw=+P.apt.corridor||1.6,dMax=Math.max(+P.apt.depth||8,+P.apt.maxDepth||12),d=(Wm-cw)/2;
+  // wing-shaped: longer than wide, typical section within the depth limits, and no section much deeper than the cap
+  if(d<4||d>dMax+0.05||a1-a0<Wm||secs.some(([l,h])=>Math.max(mid0-l,h-mid0)-cw/2>dMax+3))return null;
   // world point from (along, across)
   const W2=(a,c)=>alongU?F.toW(a,c):F.toW(c,a);
   const rect=(x0,x1,y0,y1)=>{const r=[W2(x0,y0),W2(x1,y0),W2(x1,y1),W2(x0,y1)];return area(r)<0?r.reverse():r};
-  return {pc,alongU,a0,a1,c0,c1,d,cw,W2,rect,sp:alongU?+P.grid.sx:+P.grid.sy,toA:p=>{const g=F.toG(p);return alongU?g.u:g.v}};
+  return {pc,alongU,a0,a1,c0,c1,mid:mid0,d,cw,W2,rect,sp:alongU?+P.grid.sx:+P.grid.sy,toA:p=>{const g=F.toG(p);return alongU?g.u:g.v}};
 }
 /* A unit's type from its area (shared by both methods) */
 function typeOf(a,types){
@@ -182,7 +193,7 @@ function rowPlate(P,bars,cores){
   const live=types.filter(t=>t.mix>0||types.every(u=>!u.mix)),minA=Math.min(...live.map(t=>t.min)),maxA=Math.max(...live.map(t=>t.max));
   const rows=[],corridor=[];
   for(const b of bars){
-    const mid=(b.c0+b.c1)/2,h=b.cw/2,E=1;
+    const mid=b.mid,h=b.cw/2,E=1;
     let cor=inter([b.pc[0]],[b.rect(b.a0-E,b.a1+E,mid-h,mid+h)]);if(coreShapes.length)cor=diff(cor,coreShapes);corridor.push(...cor);
     for(const [y0,y1,dy] of [[b.c0-E,mid-h,mid-h],[mid+h,b.c1+E,mid+h]]){
       let sh=inter([b.pc[0]],[b.rect(b.a0-E,b.a1+E,y0,y1)]);if(coreShapes.length)sh=diff(sh,coreShapes);if(shapeArea(sh)<1)continue;
@@ -210,7 +221,8 @@ function rowPlate(P,bars,cores){
   let lam={};for(const t of types)lam[t.name]=0;let best=null;
   for(let it=0;it<7;it++){
     const sol=rows.map(r=>solve(r,lam)),cnt={};let n=0;
-    for(const s of sol)for(const t of s.types)if(t&&t!=="?"){cnt[t]=(cnt[t]||0)+1;n++}
+    // oversize units count in the total, so trading a typed unit for an oversize one never looks better
+    for(const s of sol)for(const t of s.types)if(t){cnt[t]=(cnt[t]||0)+1;n++}
     const err=types.reduce((m,t)=>m+Math.abs((cnt[t.name]||0)/(n||1)-want[t.name]),0);
     const score=err*3+sol.reduce((m,s)=>m+s.cost,0)/Math.max(1,n)*0.2;
     if(!best||score<best.score)best={score,sol};
@@ -260,7 +272,8 @@ function stripPlate(P,fp,cores,edits){
         // a loop with nowhere to cut (all corners, or shorter than any unit): one unit or nothing
         return bestL||{cost:0,cuts:[],types:[]};
       });
-      const cnt={};let n=0;for(const s of sol)for(const t of s.types)if(t&&t!=="?"){cnt[t]=(cnt[t]||0)+1;n++}
+      const cnt={};let n=0;// oversize units count in the total, so trading a typed unit for an oversize one never looks better
+    for(const s of sol)for(const t of s.types)if(t){cnt[t]=(cnt[t]||0)+1;n++}
       const err=types.reduce((m,t)=>m+Math.abs((cnt[t.name]||0)/(n||1)-want[t.name]),0);
       const score=err*3+sol.reduce((m,s)=>m+s.cost,0)/Math.max(1,n)*0.2;
       if(!best||score<best.score)best={score,sol};

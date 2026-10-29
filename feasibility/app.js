@@ -31,7 +31,7 @@ function ensure(o){
   o.coreRules={aptsPerLift:60,aptDepth:8,travel:6,exitsApart:45,fire:"fe",feTravel:25,...(o.coreRules||{})};
   o.mass={...window.MASS.defaults(),...(o.mass||{})};
   o.coreView={cat:"all",suit:true,...(o.coreView||{})};
-  o.apt={...AP.defaults(),...(o.apt||{})};if(!o.apt._g){o.apt.snap="only";o.apt._g=1}for(const t of o.apt.types)if(t.beds==null)t.beds=PK.bedsOf(t);if(o.coreRules.aptDepth&&!(o.apt&&o.apt._d)){o.apt.depth=o.coreRules.aptDepth;o.apt._d=1}
+  o.apt={...AP.defaults(),...(o.apt||{})};if(!o.apt._g){o.apt.snap="only";o.apt._g=1}if(!o.apt._m){o.apt.maxDepth=10;o.apt._m=1}for(const t of o.apt.types)if(t.beds==null)t.beds=PK.bedsOf(t);if(o.coreRules.aptDepth&&!(o.apt&&o.apt._d)){o.apt.depth=o.coreRules.aptDepth;o.apt._d=1}
   return o;
 }
 function gridOrigin(site){const a=site.pts[Math.min(site.front||0,site.pts.length-1)];return {ox:a.x,oy:a.y}}
@@ -467,7 +467,7 @@ function useCore(id){
 function renderGrid(){
   const g=P.grid,pk=P.park;
   $("#gSx").value=g.sx;$("#gSy").value=g.sy;$("#gCol").value=g.col;$("#gSnap").checked=!!g.snap;$("#gCentre").value=g.centre||"auto";
-  $("#gAng").value=g.angle==null?"":g.angle;$("#gAng").placeholder=fmt(((GR.angle(P)*180/Math.PI)%180+180)%180,1)+" (street)";
+  $("#gAng").value=g.angle==null?"":g.angle;$("#gAng").placeholder=fmt(((GR.angle(P)*180/Math.PI)%180+180)%180,1)+" ("+GR.autoAngle(P).by+")";
   $("#pW").value=pk.W;$("#pL").value=pk.L;$("#pA").value=pk.A;
   $("#perLift").value=P.coreRules.aptsPerLift;$("#travelLim").value=P.coreRules.travel;$("#feLim").value=P.coreRules.feTravel;$("#fireMode").value=P.coreRules.fire;
   $("#feLimF").hidden=P.coreRules.fire!=="fe";$("#travelLimF").hidden=P.coreRules.fire==="fe";

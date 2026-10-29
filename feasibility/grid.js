@@ -4,10 +4,23 @@
 const {area,bbox,pip,D2R}=window.G;
 
 /* grid angle in radians: set by the user, or square to the street frontage */
+/* grid angle in radians: set by the user; otherwise square to the street frontage, unless the lot's
+   longest straight side (edges in line counted together) is skewed to the street by more than 10°:
+   then square to that side, so the building and its rows run with the lot */
 function angle(P){
   if(P.grid&&P.grid.angle!=null&&isFinite(P.grid.angle))return P.grid.angle*D2R;
-  const s=P.site.pts,i=Math.min(P.site.front||0,s.length-1),a=s[i],b=s[(i+1)%s.length];
-  return Math.atan2(b.y-a.y,b.x-a.x);
+  return autoAngle(P).t;
+}
+let autoFor=null,autoRes=null;
+function autoAngle(P){
+  const s=P.site.pts;if(autoFor===s)return autoRes;
+  const n=s.length,i=Math.min(P.site.front||0,n-1),ang=k=>Math.atan2(s[(k+1)%n].y-s[k].y,s[(k+1)%n].x-s[k].x),len=k=>Math.hypot(s[(k+1)%n].x-s[k].x,s[(k+1)%n].y-s[k].y);
+  const front=ang(i),diff90=(a,b)=>{const d=Math.abs(((a-b)%(Math.PI/2)+Math.PI/2)%(Math.PI/2));return Math.min(d,Math.PI/2-d)};
+  // straight runs: consecutive edges within 3° of each other
+  let best={L:0,t:front};
+  for(let k=0;k<n;k++){let L=len(k),j=k;while(L<1e6&&j-k<n-1&&Math.abs(Math.atan2(Math.sin(ang((j+1)%n)-ang(k)),Math.cos(ang((j+1)%n)-ang(k))))<3*D2R){j++;L+=len(j%n)}if(L>best.L)best={L,t:ang(k)}}
+  autoFor=s;autoRes=diff90(best.t,front)>10*D2R?{t:best.t,by:"long side"}:{t:front,by:"street"};
+  return autoRes;
 }
 /* world <-> grid frame (u along the street, v across) */
 function frame(P){
@@ -77,5 +90,5 @@ function carpark(P,span){
   return {c,best:opt[0],other:opt[1]};
 }
 
-window.GRID={angle,frame,lines,columns,snap,centreOn,carpark};
+window.GRID={autoAngle,angle,frame,lines,columns,snap,centreOn,carpark};
 })();

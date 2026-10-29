@@ -93,7 +93,9 @@ function placeIn(P,R,inst,others,target,useCorr){
   const outs=top.filter(r=>area(r)>0),outer=outs.slice().sort((a,b)=>area(b)-area(a))[0];
   const avoid=(others||[]).map(geom).filter(Boolean);
   const bb=bbox(outs.flat()),ga=window.GRID.angle(P)/D2R,corr=useCorr?corridorZone(P,R):[];
-  const onCorr=g=>!corr.length||shapeArea(window.G.inter([g.outline],corr))>0.5;
+  // the core opens onto the corridor but doesn't cut it in two
+  const nCorr=corr.filter(r=>area(r)>0).length;
+  const onCorr=g=>!corr.length||shapeArea(window.G.inter([g.outline],corr))>0.5&&window.G.diff(corr,[g.outline]).filter(r=>area(r)>0).length<=nCorr;
   // aim for the plate centre, or for a second core, halfway to the corner furthest from the others
   let c0=centroid(outer);
   if(target)c0=target;

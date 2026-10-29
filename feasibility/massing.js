@@ -26,7 +26,8 @@ function score(P,sh){
   for(const pc of pieces(sh)){
     // apartments deepen to keep the corridor at its width (as the layout does)
     const de=window.APTS?Math.max(d,window.APTS.depthFor(P,pc).d):d;
-    const a=shapeArea(pc),in1=offsetShape(pc,-de),strip=a-shapeArea(in1),dark=in1.length?shapeArea(offsetShape(pc,-(de+cw))):0;
+    // floor deeper than the brief's apartment depth is worth less (D27: rooms far from a window)
+    const a=shapeArea(pc),in1=offsetShape(pc,-de),stripE=a-shapeArea(in1),stripD=de>d?a-shapeArea(offsetShape(pc,-d)):stripE,strip=stripD+0.6*(stripE-stripD),dark=in1.length?shapeArea(offsetShape(pc,-(de+cw))):0;
     s+=strip-Math.max(0,CORE-dark)-Math.max(0,dark-CORE)*1.5;
   }
   return s;
@@ -40,8 +41,8 @@ function keep(P,sh){
   return pieces(o).filter(pc=>shapeArea(pc)>=150&&offsetShape(pc,-w).length).flat()}
 
 /* parallel bars running at angle t: bands D wide with the gap between, slid across to the best phase */
-function bandsAt(ref,t,phase,P){
-  const {D}=depths(P),gap=Math.max(3,+P.mass.gap||9),c=Math.cos(t),s=Math.sin(t);
+function bandsAt(ref,t,phase,P,D){
+  const gap=Math.max(3,+P.mass.gap||9),c=Math.cos(t),s=Math.sin(t);
   const pts=ref.flat(),us=pts.map(p=>p.x*c+p.y*s),vs=pts.map(p=>-p.x*s+p.y*c);
   const u0=Math.min(...us)-5,u1=Math.max(...us)+5,v1=Math.max(...vs);
   const out=[];
@@ -53,13 +54,16 @@ function bandShape(B,pts){
   let u0=B.u0,u1=B.u1;if(pts&&pts.length){const us=pts.map(p=>p.x*c+p.y*s);u0=Math.min(u0,Math.min(...us)-5);u1=Math.max(u1,Math.max(...us)+5)}
   return B.bands.map(([a,b])=>{const r=[W(u0,a),W(u1,a),W(u1,b),W(u0,b)];return area(r)<0?r.reverse():r});
 }
+/* bars from the standard wing (2 × depth + corridor) up to the deepest apartments allowed, 1 m steps */
 function barOptions(P,ref){
-  const {D}=depths(P),gap=Math.max(3,+P.mass.gap||9),t0=window.GRID.angle(P),out=[];
+  const {D,cw}=depths(P),gap=Math.max(3,+P.mass.gap||9),t0=window.GRID.angle(P),out=[];
+  const dMax=Math.max(+(P.apt&&P.apt.depth)||8,+(P.apt&&P.apt.maxDepth)||12),widths=[];
+  for(let w=D;w<=2*dMax+cw+1e-6;w+=1)widths.push(w);
   for(const t of [t0,t0+Math.PI/2]){
     let best=null;
-    const tryPhase=ph=>{const B=bandsAt(ref,t,ph,P),sh=keep(P,inter(ref,bandShape(B)));if(!sh.length)return;const s=score(P,sh);if(!best||s>best.score)best={kind:"bars",B,shape:sh,score:s,phase:ph}};
-    for(let ph=-D+1;ph<gap+1;ph+=1)tryPhase(ph);
-    if(best){const p0=best.phase;for(const dp of [-0.5,0.5])tryPhase(p0+dp)}
+    const tryPhase=(ph,w)=>{const B=bandsAt(ref,t,ph,P,w),sh=keep(P,inter(ref,bandShape(B)));if(!sh.length)return;const s=score(P,sh);if(!best||s>best.score)best={kind:"bars",B,shape:sh,score:s,phase:ph,w}};
+    for(const w of widths)for(let ph=-w+1;ph<gap+1;ph+=1.5)tryPhase(ph,w);
+    if(best){const p0=best.phase,w0=best.w;for(const dp of [-1,-0.5,0.5,1])tryPhase(p0+dp,w0)}
     if(best)out.push(best);
   }
   return out;
@@ -76,7 +80,7 @@ function courtOption(P,ref){
 const cache=new Map();
 function choose(P,ref){
   const mode=P.mass.mode||"auto",{d,cw}=depths(P);
-  const key=JSON.stringify([mode,d,cw,P.mass.gap,P.grid.angle,P.site.front,ref.map(r=>r.map(p=>[+p.x.toFixed(2),+p.y.toFixed(2)]))]);
+  const key=JSON.stringify([mode,d,cw,P.apt&&P.apt.maxDepth,P.mass.gap,P.grid.angle,P.site.front,ref.map(r=>r.map(p=>[+p.x.toFixed(2),+p.y.toFixed(2)]))]);
   if(cache.has(key))return cache.get(key);
   const fill={kind:"fill",shape:ref,score:score(P,ref)};
   let opts=[fill];
@@ -102,7 +106,7 @@ function describe(P,ch){
   const {d,cw,D}=depths(P);if(!ch)return "";
   if(ch.kind==="fill")return `Floors fill the setback envelope (compact enough for a central core).`;
   const n=outers(ch.shape).length;
-  if(ch.kind==="bars")return `${n} double-loaded bar${n>1?"s":""} ${D.toFixed(1)} m deep (${d} m apartment, ${cw} m corridor, ${d} m apartment), ${(+P.mass.gap).toFixed(1)} m apart.`;
+  if(ch.kind==="bars"){const w=ch.w||D,da=(w-cw)/2;return `${n} double-loaded bar${n>1?"s":""} ${w.toFixed(1)} m deep (${da.toFixed(1)} m apartment, ${cw} m corridor, ${da.toFixed(1)} m apartment)${n>1?`, ${(+P.mass.gap).toFixed(1)} m apart`:""}.`}
   return `Wings ${D.toFixed(1)} m deep round a courtyard at least ${(+P.mass.gap).toFixed(1)} m across.`;
 }
 
