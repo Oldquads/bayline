@@ -9,7 +9,7 @@
 const {area,bbox,centroid,diff,inter,union,shapeArea,offsetShape,D2R}=window.G;
 const STEP=0.4,EXT=1.5;
 
-function defaults(){return {depth:8,maxDepth:10,corridor:1.6,wall:0.2,snap:"prefer",typical:null,edits:{},
+function defaults(){return {depth:8,maxDepth:10,corridor:1.6,snap:"prefer",typical:null,edits:{},
   types:[{name:"Studio",beds:0,bays:0.5,mix:0},{name:"1B",beds:1,bays:1,mix:40},{name:"2B",beds:2,bays:1.5,mix:45},{name:"3B",beds:3,bays:2,mix:15}]}}
 
 /* deepest inset that still leaves floor: half the plate's widest width */
@@ -193,7 +193,8 @@ function typeOf(a,types){
    (1B = 1 bay, 2B = 1.5, 3B = 2). The end unit of a row takes the part bay up to the end of the wing. Which
    walls is a shortest-path choice per row, with per-type weights tuned so the counts approach the mix. */
 function rowPlate(P,bars,cores){
-  const A=P.apt,wall=+A.wall||0.2,coreShapes=cores.map(c=>c.outline);
+  // party walls are lines at feasibility level: areas are measured to them
+  const A=P.apt,coreShapes=cores.map(c=>c.outline);
   const types=productTypes(P);
   const want={},tot=types.reduce((m,t)=>m+(+t.mix||0),0)||1;for(const t of types)want[t.name]=(+t.mix||0)/tot;
   const live=types.filter(t=>t.mix>0||types.every(u=>!u.mix)),maxB=Math.max(...live.map(t=>t.bays));
@@ -213,12 +214,18 @@ function rowPlate(P,bars,cores){
       const secLen=(R,x)=>{let L=0;for(const r of R){const cs=[];for(let i=0;i<r.length;i++){const [pa,pc2]=r[i],[qa,qc]=r[(i+1)%r.length];if((pa-x)*(qa-x)<0)cs.push(pc2+(qc-pc2)*(x-pa)/(qa-pa))}cs.sort((u,v)=>u-v);for(let i=0;i+1<cs.length;i+=2)L+=cs[i+1]-cs[i]}return L};
       // blocked only where a core takes nearly the full depth of the row; otherwise the apartment there is notched round the core
       const blocked=X.slice(1).map((x,i)=>{const xm=(X[i]+x)/2;return secLen(Rs,xm)<0.2*secLen(Rf,xm)});
-      rows.push({b,sh,X,blocked,door:dy,y0,y1});
+      // which way the row's facade faces: +1 north (the sun side here), -1 south
+      const o=b.W2(0,0),q=b.W2(0,y0<mid?-1:1),sun=q.y-o.y;
+      rows.push({b,sh,X,blocked,sun,door:dy,y0,y1});
     }
   }
   // Every way to cut a row, by how many units of each type it makes (the cheapest cut for each count),
   // then the combination over all rows whose counts are closest to the brief's mix.
   const names=live.map(t=>t.name).concat(["?"]),NT=names.length;
+  // Aspect: larger types want the north (sun) side and the wing ends (dual aspect); studios the south side and
+  // the middle. Only changes where units go, not how many of each.
+  const bMin=Math.min(...live.map(t=>t.bays)),bSpan=Math.max(0.5,maxB-bMin),size=t=>(t.bays-bMin)/bSpan-0.5;
+  const aspect=(r,t,end)=>-1.5*size(t)*(r.sun+(end?1.2:0));
   const rowOptions=r=>{
     const m=r.X.length-1,sp=r.b.sp,S=Array.from({length:m+1},()=>new Map());
     S[0].set("",{cost:0,cnt:new Array(NT).fill(0),prev:null});
@@ -231,7 +238,7 @@ function rowPlate(P,bars,cores){
         // beside a core: may stay empty
         if(bl&&j===i+1){add(j,i,fk,st.cnt,st.cost+0.2,null);continue}
         if(bl)break;
-        live.forEach((t,ti)=>{const off=Math.abs(nb-t.bays);if(off>0.45)return;const c=st.cnt.slice();c[ti]++;add(j,i,fk,c,st.cost+off*off*6,t.name)});
+        live.forEach((t,ti)=>{const off=Math.abs(nb-t.bays);if(off>0.45)return;const c=st.cnt.slice();c[ti]++;add(j,i,fk,c,st.cost+off*off*6+aspect(r,t,i===0||j===m),t.name)});
         // longer than the biggest type: only if the row can't be divided
         if(nb>maxB+0.45){const c=st.cnt.slice();c[NT-1]++;add(j,i,fk,c,st.cost+30+nb,"?");break}
       }}
@@ -254,8 +261,8 @@ function rowPlate(P,bars,cores){
   const units=[],left=[],strip=[];
   rows.forEach((r,ri)=>{strip.push(...r.sh);const s=best.sol[ri];
     for(let k=0;k+1<s.cuts.length;k++){
-      const x0=r.X[s.cuts[k]],x1=r.X[s.cuts[k+1]],hw=wall/2,ty=s.types[k];
-      const pcs=piecesOf(inter(r.sh,[r.b.rect(x0+(k?hw:0),x1-(k+2<s.cuts.length?hw:0),r.y0-1,r.y1+1)]));
+      const x0=r.X[s.cuts[k]],x1=r.X[s.cuts[k+1]],ty=s.types[k];
+      const pcs=piecesOf(inter(r.sh,[r.b.rect(x0,x1,r.y0-1,r.y1+1)]));
       for(const pc of pcs){const a=shapeArea(pc);if(a<1)continue;
         if(!ty||a<12){left.push({poly:pc[0],rings:pc,area:a});continue}
         const xm=Math.max(x0,Math.min(x1,(x0+x1)/2));
@@ -266,7 +273,8 @@ function rowPlate(P,bars,cores){
 
 /* the facade-strip method, for pieces that aren't wings */
 function stripPlate(P,fp,cores,edits){
-  const A=P.apt,cw=+A.corridor||1.6,wall=+A.wall||0.2;
+  // party walls are lines: a hairline cut separates the units, no area is taken off
+  const A=P.apt,cw=+A.corridor||1.6,wall=0.01;
   const {d,narrow,deep}=depthFor(P,fp);
   const coreShapes=cores.map(c=>c.outline);
   const inner=offsetShape(fp,-d);
@@ -291,7 +299,7 @@ function stripPlate(P,fp,cores,edits){
         S.forEach((x,i)=>{if(x.ok&&x.kind==="grid")starts.push(i)});
         const okIdx=S.map((x,i)=>x.ok?i:-1).filter(i=>i>=0);
         for(let q=0;q<4&&okIdx.length;q++)starts.push(okIdx[Math.floor(q*okIdx.length/4)]);
-        let bestL=null;for(const st of [...new Set(starts)].slice(0,6)){const s=solveLoop(R,slab,types,lam,A.snap,st,wall*d);if(s&&(!bestL||s.cost<bestL.cost))bestL=s}
+        let bestL=null;for(const st of [...new Set(starts)].slice(0,6)){const s=solveLoop(R,slab,types,lam,A.snap,st,0);if(s&&(!bestL||s.cost<bestL.cost))bestL=s}
         // a loop with nowhere to cut (all corners, or shorter than any unit): one unit or nothing
         return bestL||{cost:0,cuts:[],types:[]};
       });

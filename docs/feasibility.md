@@ -82,8 +82,8 @@ Known simplifications: the floorplate is the whole envelope, so big sites get ma
 | Apartment depth | 8 m (was 9) | Also the corridor line used for doors and the travel check, and half the wing depth in massing. The reference schemes use 7.5-8.5 m; Clause 58 D27 caps single-aspect open plan at 9 m with 2.7 m ceilings. |
 | Corridor | 1.6 m | Always this width. A plate wider than two apartments + corridor gets deeper apartments (up to the maximum depth); a thinner one gets shallower apartments. |
 | Max apartment depth | 10 m (internal, not on the panel) | Beyond this (a compact tower) apartments keep the set depth and the middle is a core zone. The no-wall zone at outside corners uses the set depth, not the deepened one. |
-| Party wall | 0.2 m | Thickness of the cuts. |
-| Party walls and the grid | preferred, not forced | Walls land on grid lines where that still gives a good unit (no setting since the user asked for fewer parameters). |
+| Party wall | a line | At feasibility level a party wall is a line and apartment areas are measured to it (user). No thickness setting. |
+| Party walls and the grid | on grid and mid-bay lines | In wings, walls only on grid and mid-bay lines; types are bay counts. Odd-shaped plates prefer grid lines. No setting. |
 
 How a floor is cut (general moves, no site fixes):
 

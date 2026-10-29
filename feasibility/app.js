@@ -31,7 +31,7 @@ function ensure(o){
   o.coreRules={aptsPerLift:60,aptDepth:8,travel:6,exitsApart:45,fire:"fe",feTravel:25,...(o.coreRules||{})};
   o.mass={...window.MASS.defaults(),...(o.mass||{})};
   o.coreView={cat:"all",suit:true,...(o.coreView||{})};
-  o.apt={...AP.defaults(),...(o.apt||{})};if(!o.apt._g2){o.apt.snap="prefer";o.apt.wall=0.2;o.apt._g2=1}if(!o.apt._m){o.apt.maxDepth=10;o.apt._m=1}for(const t of o.apt.types){if(t.beds==null)t.beds=PK.bedsOf(t);if(t.bays==null)t.bays=AP.baysOf(t)}if(o.coreRules.aptDepth&&!(o.apt&&o.apt._d)){o.apt.depth=o.coreRules.aptDepth;o.apt._d=1}
+  o.apt={...AP.defaults(),...(o.apt||{})};if(!o.apt._g2){o.apt.snap="prefer";o.apt._g2=1}delete o.apt.wall;if(!o.apt._m){o.apt.maxDepth=10;o.apt._m=1}for(const t of o.apt.types){if(t.beds==null)t.beds=PK.bedsOf(t);if(t.bays==null)t.bays=AP.baysOf(t)}if(o.coreRules.aptDepth&&!(o.apt&&o.apt._d)){o.apt.depth=o.coreRules.aptDepth;o.apt._d=1}
   return o;
 }
 function gridOrigin(site){const a=site.pts[Math.min(site.front||0,site.pts.length-1)];return {ox:a.x,oy:a.y}}
@@ -514,7 +514,7 @@ const typLayout=()=>{const g=typicalGroup();return g&&g.layout};
 /* lay out every apartment floor (cached by plate, cores, brief, grid and hand edits) */
 function layouts(){
   const geos=P.cores.map(C.geom).filter(Boolean);
-  const keyBase=JSON.stringify([P.cores,P.apt.depth,P.apt.maxDepth,P.apt.corridor,P.apt.wall,P.apt.snap,P.apt.types,P.grid]);
+  const keyBase=JSON.stringify([P.cores,P.apt.depth,P.apt.maxDepth,P.apt.corridor,P.apt.snap,P.apt.types,P.grid]);
   const next=new Map();let apts=0,nsa=0,laid=false;
   for(const g of RES.groups){
     if(!(g.floors&&g.use==="apartments"&&g.fp.length)){continue}
