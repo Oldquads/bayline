@@ -28,7 +28,8 @@ function ensure(o){
   o.cores=o.cores||[];if(o.coreAuto==null)o.coreAuto=true;o.coreSel=o.coreSel||0;
   o.grid={sx:8.4,sy:8.4,angle:null,ox:0,oy:0,col:0.6,snap:true,centre:"auto",...(o.grid||{})};
   o.park={...PK.defaults(),...(o.park||{})};if(!o.park.rates||!o.park.rates.A)o.park.rates=PK.defaults().rates;
-  o.coreRules={aptsPerLift:60,aptDepth:9,travel:6,exitsApart:45,...(o.coreRules||{})};
+  o.coreRules={aptsPerLift:60,aptDepth:8,travel:6,exitsApart:45,fire:"fe",feTravel:25,...(o.coreRules||{})};
+  o.mass={...window.MASS.defaults(),...(o.mass||{})};
   o.coreView={cat:"all",suit:true,...(o.coreView||{})};
   o.apt={...AP.defaults(),...(o.apt||{})};for(const t of o.apt.types)if(t.beds==null)t.beds=PK.bedsOf(t);if(o.coreRules.aptDepth&&!(o.apt&&o.apt._d)){o.apt.depth=o.coreRules.aptDepth;o.apt._d=1}
   return o;
@@ -87,13 +88,16 @@ function recompute(){
   if(!window.ClipperLib){$("#summary").innerHTML=`<p class="hint">The geometry library didn't load. Check your connection and reload.</p>`;return}
   RES=E.compute(P);MAX=E.maxOut(P);
   centreGrid();
-  if(P.coreAuto&&!P.cores.length&&C.lib){const s=C.suggest(P,RES);P.coreAuto=false;if(s.length){P.cores=s;P.coreSel=0;renderCores()}}
+  // suggested cores follow the building (re-suggested when the stack, massing or rules change); hand-placed cores stay put
+  if(C.lib){const n=C.needs(P,RES),ck=JSON.stringify([n.stairs,n.lifts,RES.groups.map(g=>[g.floors,Math.round(g.fpArea)]),P.mass,P.coreRules,P.apt.depth,P.apt.maxDepth,P.apt.corridor,P.grid.sx,P.grid.sy,P.grid.angle,P.grid.snap]);
+    if((P.coreAuto&&!P.cores.length)||(P.coresBy==="auto"&&ck!==P.coreKey)){const s=C.suggest(P,RES);P.coreAuto=false;P.coreKey=ck;if(s.length){P.cores=s;P.coresBy="auto";P.coreSel=0;renderCores()}}}
   RES.coreArea=P.cores.map(C.geom).filter(Boolean).reduce((m,g)=>m+g.area,0);
   layouts();
   if(C.lib)RES.checks.push(...C.checks(P,RES,P.cores));
   RES.checks.push(...aptChecks());
   parkSoon();
   RES.checks.push(...gridChecks());
+  $("#massMsg").textContent=RES.mass?window.MASS.describe(P,RES.mass):"";
   renderSummary();renderStackOut();renderSched();renderCoreNeed();renderGridFit();renderAptOut();draw();save();
 }
 let rT=null;function schedule(){clearTimeout(rT);rT=setTimeout(recompute,60)}
@@ -152,6 +156,7 @@ function renderControls(){
   $("#rescode").checked=!!c.rescode;$("#exclCar").checked=c.excludeCarpark!==false;
   $("#preset").innerHTML=Object.entries(R.PRESETS).map(([k,p])=>`<option value="${k}"${c.preset===k?" selected":""}>${p.label}</option>`).join("")+`<option value="custom"${c.preset==="custom"?" selected":""}>Custom</option>`;
   $("#aptSize").value=P.aptSize;$("#effApt").value=P.effApt;
+  $("#massMode").innerHTML=Object.entries(window.MASS.MODES).map(([k,v])=>`<option value="${k}"${P.mass.mode===k?" selected":""}>${esc(v)}</option>`).join("");$("#massGap").value=P.mass.gap;
   renderBands();
 }
 function renderBands(){
@@ -391,6 +396,7 @@ function renderCores(){
       ${base.variants?Object.keys(base.variants).map(v=>`<label><input type="checkbox" data-v="${esc(v)}"${inst.variant===v?" checked":""}>${esc(v.replace(/ on$/,""))}</label>`).join(""):""}</div>`;
     d.addEventListener("click",e=>{
       const a=e.target.closest("[data-a]");P.coreSel=i;
+      if(a||e.target.closest("[data-v]"))P.coresBy="hand";
       if(a){const k=a.dataset.a;
         if(k==="del"){P.cores.splice(i,1);P.coreSel=Math.max(0,Math.min(P.coreSel,P.cores.length-1))}
         else if(k==="rot"){inst.rot=((inst.rot||0)+90)%360;snapInst(inst)}
@@ -453,6 +459,7 @@ function useCore(id){
   if(!cur||!C.fits(inst,RES)){const others=P.cores.filter((_,i)=>i!==P.coreSel);const p=C.place(P,RES,inst,others);if(p)inst=p;else if(!cur){const o=window.G.centroid(P.site.pts);inst.x=o.x;inst.y=o.y}}
   else snapInst(inst);
   if(cur)P.cores[P.coreSel]=inst;else{P.cores.push(inst);P.coreSel=P.cores.length-1}
+  P.coresBy="hand";
   renderCores();recompute();
 }
 
@@ -462,7 +469,8 @@ function renderGrid(){
   $("#gSx").value=g.sx;$("#gSy").value=g.sy;$("#gCol").value=g.col;$("#gSnap").checked=!!g.snap;$("#gCentre").value=g.centre||"auto";
   $("#gAng").value=g.angle==null?"":g.angle;$("#gAng").placeholder=fmt(((GR.angle(P)*180/Math.PI)%180+180)%180,1)+" (street)";
   $("#pW").value=pk.W;$("#pL").value=pk.L;$("#pA").value=pk.A;
-  $("#perLift").value=P.coreRules.aptsPerLift;$("#travelLim").value=P.coreRules.travel;
+  $("#perLift").value=P.coreRules.aptsPerLift;$("#travelLim").value=P.coreRules.travel;$("#feLim").value=P.coreRules.feTravel;$("#fireMode").value=P.coreRules.fire;
+  $("#feLimF").hidden=P.coreRules.fire!=="fe";$("#travelLimF").hidden=P.coreRules.fire==="fe";
 }
 function gridSpan(){const gs=RES.groups.filter(g=>g.floors&&g.fp.length);if(!gs.length)return 30;const b=bbox(gs.flatMap(g=>g.fp.flat()));return Math.hypot(b.x1-b.x0,b.y1-b.y0)}
 function goodAlong(c,span){const out=[];for(let s=6;s<=12.001;s+=0.1){const S=+s.toFixed(1);let ok=false;const M=2*c.L+c.A,n=Math.max(2,Math.floor(span/S)+1);for(let o=0;o<M&&!ok;o+=0.05){let h=0;for(let k=0;k<n;k++){const x=((o+k*S)%M+M)%M;if(x>c.L+0.05&&x<c.L+c.A-0.05){h++;break}}if(!h)ok=true}if(ok)out.push(S)}return out}
@@ -508,7 +516,7 @@ const typLayout=()=>{const g=typicalGroup();return g&&g.layout};
 /* lay out every apartment floor (cached by plate, cores, brief, grid and hand edits) */
 function layouts(){
   const geos=P.cores.map(C.geom).filter(Boolean);
-  const keyBase=JSON.stringify([P.cores,P.apt.depth,P.apt.corridor,P.apt.wall,P.apt.snap,P.apt.types,P.grid]);
+  const keyBase=JSON.stringify([P.cores,P.apt.depth,P.apt.maxDepth,P.apt.corridor,P.apt.wall,P.apt.snap,P.apt.types,P.grid]);
   const next=new Map();let apts=0,nsa=0,laid=false;
   for(const g of RES.groups){
     if(!(g.floors&&g.use==="apartments"&&g.fp.length)){continue}
@@ -541,6 +549,7 @@ function aptChecks(){
   if(offb.length)out.push(["warn",`${offb.length} apartment${offb.length>1?"s fall":" falls"} between the brief's size ranges (${offb.map(u=>`${u.type} ${fmt(u.area)} m²`).slice(0,4).join(", ")}). Move a wall or widen the ranges.`]);
   if(c.Oversize)out.push(["warn",`${c.Oversize} apartment${c.Oversize>1?"s are":" is"} bigger than any type in the brief (corner or leftover strip). Split ${c.Oversize>1?"them":"it"} or add a bigger type.`]);
   if(L.left.length)out.push(["info",`${L.left.length} piece${L.left.length>1?"s":""} of facade strip (${fmt(L.left.reduce((m,u)=>m+u.area,0))} m²) too small for an apartment: storage, services or balcony.`]);
+  if(L.deep)out.push(["info",`${g.name}: apartments deepened to ${fmt(L.d,1)} m so the corridor stays ${fmt(P.apt.corridor,1)} m (maximum depth ${fmt(P.apt.maxDepth,1)} m).`]);
   if(L.narrow)out.push(["warn",`The ${g.name} plate is narrower than two apartments and a corridor: apartments cut to ${fmt(L.d,1)} m deep.`]);
   if(L.d>9.05)out.push(["warn",`Apartments ${fmt(L.d,1)} m deep: Clause 58 Standard D27 limits single-aspect habitable rooms to 9 m from a window (open-plan, 2.7 m ceiling).`]);
   P.cores.forEach((inst,i)=>{const geo=C.geom(inst);if(geo&&L.corridor.length&&window.G.shapeArea(window.G.inter([window.G.offsetShape([geo.outline],0.3)[0]||geo.outline],L.corridor))<0.3)out.push(["warn",`Core C${i+1} doesn't reach the ${fmt(P.apt.corridor,1)} m corridor on ${g.name}. Move it next to the corridor.`])});
@@ -571,14 +580,14 @@ function renderBrief(){
     const x=tr.querySelector(".x");if(x)x.addEventListener("click",()=>{P.apt.types.splice(i,1);renderBrief();schedule()});
     tb.appendChild(tr);
   });
-  $("#aDepth").value=P.apt.depth;$("#aCorr").value=P.apt.corridor;$("#aWall").value=P.apt.wall;$("#aSnap").value=P.apt.snap;
+  $("#aDepth").value=P.apt.depth;$("#aCorr").value=P.apt.corridor;$("#aMaxD").value=P.apt.maxDepth;$("#aWall").value=P.apt.wall;$("#aSnap").value=P.apt.snap;
 }
 function bindApts(){
   $("#addType").addEventListener("click",()=>{const last=P.apt.types[P.apt.types.length-1]||{min:60,target:70,max:80,width:7};
     P.apt.types.push({name:`Type ${P.apt.types.length+1}`,beds:Math.min(4,(+last.beds||2)+1),min:Math.round(last.max+5),target:Math.round(last.max+15),max:Math.round(last.max+25),width:+(last.width+1.5).toFixed(1),mix:0});renderBrief();schedule()});
   $("#aReset").addEventListener("click",()=>{const g=typicalGroup();if(g)delete P.apt.edits[g.id];recompute()});
   const an=(id,k,min)=>$(id).addEventListener("input",e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=min){P.apt[k]=v;P.apt.edits={};schedule()}});
-  an("#aDepth","depth",4);an("#aCorr","corridor",1);an("#aWall","wall",0.1);
+  an("#aDepth","depth",4);an("#aCorr","corridor",1);an("#aMaxD","maxDepth",4);an("#aWall","wall",0.1);
   $("#aSnap").addEventListener("change",e=>{P.apt.snap=e.target.value;schedule()});
   $("#aTyp").addEventListener("change",e=>{P.apt.typical=e.target.value;recompute()});
 }
@@ -778,15 +787,19 @@ function bind(){
     loadSite({id:"pasted-"+Date.now().toString(36),ring:r,front:0,address:"Pasted boundary",spi:"",roads:[]});
     msg.textContent=`Loaded ${P.site.pts.length} corners. Set the edge types under Site.`;scrollToWork();
   });
-  $("#coreSuggest").addEventListener("click",()=>{const s=C.suggest(P,RES);if(!s.length){$("#coreNeed").textContent="no library core fits this floorplate";return}P.cores=s;P.coreSel=0;renderCores();recompute()});
+  $("#coreSuggest").addEventListener("click",()=>{const s=C.suggest(P,RES);if(!s.length){$("#coreNeed").textContent="no library core fits this floorplate";return}P.cores=s;P.coresBy="auto";P.coreKey=null;P.coreSel=0;renderCores();recompute()});
   $("#coreAdd").addEventListener("click",()=>{const base=P.cores[P.coreSel]||C.suggest(P,RES,1)[0];if(!base)return;
-    const p=C.place(P,RES,{...base,id:nid()},P.cores);if(!p){$("#coreNeed").textContent="no room for another core of that type";return}P.cores.push(p);P.coreSel=P.cores.length-1;renderCores();recompute()});
+    const p=C.place(P,RES,{...base,id:nid()},P.cores);if(!p){$("#coreNeed").textContent="no room for another core of that type";return}P.cores.push(p);P.coresBy="hand";P.coreSel=P.cores.length-1;renderCores();recompute()});
   $("#coreCat").innerHTML=`<option value="all">All cores</option>`+Object.entries(C.CATS).map(([k,v])=>`<option value="${k}">${v}</option>`).join("");
   $("#coreCat").value=P.coreView.cat;$("#coreSuit").checked=P.coreView.suit;
   $("#coreCat").addEventListener("change",e=>{P.coreView.cat=e.target.value;renderCoreLib();save()});
   $("#coreSuit").addEventListener("change",e=>{P.coreView.suit=e.target.checked;renderCoreLib();save()});
   $("#perLift").addEventListener("input",e=>{P.coreRules.aptsPerLift=Math.max(10,parseFloat(e.target.value)||60);schedule()});
   $("#travelLim").addEventListener("input",e=>{P.coreRules.travel=Math.max(1,parseFloat(e.target.value)||6);schedule()});
+  $("#feLim").addEventListener("input",e=>{P.coreRules.feTravel=Math.max(6,parseFloat(e.target.value)||25);schedule()});
+  $("#fireMode").addEventListener("change",e=>{P.coreRules.fire=e.target.value;P.cores=[];P.coreAuto=true;renderGrid();schedule()});
+  $("#massMode").addEventListener("change",e=>{P.mass.mode=e.target.value;P.cores=[];P.coreAuto=true;P.apt.edits={};schedule()});
+  $("#massGap").addEventListener("input",e=>{P.mass.gap=Math.max(3,parseFloat(e.target.value)||9);P.cores=[];P.coreAuto=true;P.apt.edits={};schedule()});
   bindApts();bindPark();
   const gnum=(id,obj,k,min)=>$(id).addEventListener("input",e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=min){obj()[k]=v;schedule()}});
   gnum("#gSx",()=>P.grid,"sx",3);gnum("#gSy",()=>P.grid,"sy",3);gnum("#gCol",()=>P.grid,"col",0.2);
@@ -810,8 +823,8 @@ function bind(){
   cv.addEventListener("pointermove",e=>{if(P.view!=="plan"||!planT)return;const w=at(e);
     if(wallDrag){const L=typLayout();if(!L)return;const pr=AP.project(L.loops[wallDrag.ring],w);wallDrag.s=pr.s;wallDrag.moved=true;drawPlan();return}
     if(!drag){const r0=cv.getBoundingClientRect();cv.classList.toggle("over",hit(w)>=0||!!handleAt(e.clientX-r0.left,e.clientY-r0.top));return}
-    const inst=P.cores[drag.i];inst.x=w.x+drag.dx;inst.y=w.y+drag.dy;snapInst(inst);drawPlan()});
-  const end=()=>{if(wallDrag){const wd=wallDrag;wallDrag=null;cv.classList.remove("drag");if(wd.moved){const L=typLayout();editCuts(cs=>{cs[wd.idx]={ring:wd.ring,s:AP.clampCut(L.loops[wd.ring],wd.s,L.d)}})}return}
+    const inst=P.cores[drag.i];inst.x=w.x+drag.dx;inst.y=w.y+drag.dy;snapInst(inst);P.coresBy="hand";drawPlan()});
+  const end=()=>{if(wallDrag){const wd=wallDrag;wallDrag=null;cv.classList.remove("drag");if(wd.moved){const L=typLayout();editCuts(cs=>{cs[wd.idx]={ring:wd.ring,s:AP.clampCut(L.loops[wd.ring],wd.s,L.ban||L.d)}})}return}
     if(!drag)return;drag=null;cv.classList.remove("drag");recompute()};
   cv.addEventListener("dblclick",e=>{if(P.view!=="plan"||!planT)return;const r0=cv.getBoundingClientRect(),hd=handleAt(e.clientX-r0.left,e.clientY-r0.top);
     if(hd){editCuts(cs=>{cs.splice(hd.idx,1)});return}

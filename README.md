@@ -11,4 +11,4 @@ Test-fit only: ramps, grades, headroom, columns, sight distance and parking rate
 
 ## Feasibility planner
 
-`/feasibility/` takes a lot through the residential feasibility steps: Vicmap Planning zone and overlays, planning controls (height, storeys, FAR, coverage, garden area, setback bands, ResCode B17), the building envelope, and a ground / podium / tower level stack with GFA, FAR, net saleable area and an area schedule. Cores, grid, apartment layout and parking are the next phases (see `docs/feasibility.md`).
+`/feasibility/` takes a lot through the residential feasibility steps: Vicmap Planning zone and overlays, planning controls (height, storeys, FAR, coverage, garden area, setback bands, ResCode B17), the building envelope, a ground / podium / tower level stack, massing into double-loaded wings, stair and lift cores, a structural grid, apartment layout from a sizing brief and basement parking, with GFA, FAR, net saleable area and an area schedule (see `docs/feasibility.md`).

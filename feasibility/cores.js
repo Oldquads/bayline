@@ -58,31 +58,55 @@ function needs(P,R){
 function smallestPlate(R){const gs=R.groups.filter(g=>g.floors&&g.fp.length);if(!gs.length)return [];return gs.reduce((m,g)=>g.fpArea<shapeArea(m)?g.fp:m,gs[0].fp)}
 const fits=(geo,plates)=>plates.every(p=>shapeArea(diff([geo.outline],p))<0.05);
 /* where a core may stand: inside every floorplate it passes through (cached per result) */
-let zoneFor=null,zoneShape=null;
+let zoneFor=null,zoneShape=null,corrShape=null;
 function coreZone(R){if(zoneFor===R)return zoneShape;const ps=R.groups.filter(g=>g.floors&&g.fp.length).map(g=>g.fp);
-  let z=ps[0]||[];for(const p of ps.slice(1))z=window.G.inter(z,p);zoneFor=R;zoneShape=z;return z}
+  let z=ps[0]||[];for(const p of ps.slice(1))z=window.G.inter(z,p);zoneFor=R;zoneShape=z;corrShape=null;return z}
+/* where the corridor can be on the typical apartment floor: more than one apartment depth from every facade.
+   A core must touch it so the lobby opens onto the corridor. */
+function corridorZone(P,R){coreZone(R);if(corrShape)return corrShape;
+  const gs=R.groups.filter(g=>g.floors&&g.use==="apartments"&&g.fp.length);if(!gs.length)return corrShape=[];
+  const t=gs.reduce((m,g)=>g.floors>m.floors||(g.floors===m.floors&&g.z0>m.z0)?g:m,gs[0]);
+  // as the apartment layout does: a plate thinner than two apartments and a corridor gets shallower apartments
+  const d=window.APTS?window.APTS.depthFor(P,t.fp).d:aptDepth(P);
+  return corrShape=offsetShape(t.fp,-d)}
+/* A basement ramp needs a clear lane in from the street: ramp width + 1 m wide, ramp length + 6 m deep.
+   True when some lane along the frontage misses every core (or when no lane fits even with no cores). */
+function rampLane(P){
+  const s=P.site,n=s.pts.length,i=Math.min(s.front||0,n-1),a=s.pts[i],b=s.pts[(i+1)%n],L=Math.hypot(b.x-a.x,b.y-a.y);
+  const t={x:(b.x-a.x)/L,y:(b.y-a.y)/L},nw=window.G.inward(s.pts,i,Math.sign(area(s.pts))||1);
+  const pk=P.park||{},w=(+pk.rampW||6.1)+1,len=Math.max(8,(+pk.bFtf||3)*(+pk.rampGrade||6))+6,lanes=[];
+  for(let d=w/2;d<=L-w/2;d+=0.5){const c={x:a.x+t.x*d,y:a.y+t.y*d};
+    const r=[{x:c.x-t.x*w/2,y:c.y-t.y*w/2},{x:c.x+t.x*w/2,y:c.y+t.y*w/2},{x:c.x+t.x*w/2+nw.x*len,y:c.y+t.y*w/2+nw.y*len},{x:c.x-t.x*w/2+nw.x*len,y:c.y-t.y*w/2+nw.y*len}];
+    lanes.push(area(r)<0?r.reverse():r)}
+  return lanes;
+}
+const rampOK=(P,geos)=>{if(P.park&&P.park.basements===0)return true;const lanes=rampLane(P);
+  return !lanes.length||lanes.some(r=>geos.every(g=>shapeArea(window.G.inter([r],[g.outline]))<0.05))};
+const inShape=(p,sh)=>sh.some(r=>area(r)>0&&pip(p,r))&&!sh.some(r=>area(r)<0&&pip(p,r));
 
 let latFor=null;const lattice=new Map();
 /* place a core inside the plates: nearest spot to the plate centre, square to the grid, snapped if possible */
-function place(P,R,inst,others,target){
+function place(P,R,inst,others,target){return placeIn(P,R,inst,others,target,true)||placeIn(P,R,inst,others,target,false)}
+function placeIn(P,R,inst,others,target,useCorr){
   const plates=[coreZone(R)];
   const top=smallestPlate(R);if(!top.length)return null;
-  const outer=top.filter(r=>area(r)>0).sort((a,b)=>area(b)-area(a))[0];
+  const outs=top.filter(r=>area(r)>0),outer=outs.slice().sort((a,b)=>area(b)-area(a))[0];
   const avoid=(others||[]).map(geom).filter(Boolean);
-  const bb=bbox(outer),ga=window.GRID.angle(P)/D2R;
+  const bb=bbox(outs.flat()),ga=window.GRID.angle(P)/D2R,corr=useCorr?corridorZone(P,R):[];
+  const onCorr=g=>!corr.length||shapeArea(window.G.inter([g.outline],corr))>0.5;
   // aim for the plate centre, or for a second core, halfway to the corner furthest from the others
   let c0=centroid(outer);
   if(target)c0=target;
   else if(avoid.length){const far=outer.reduce((m,p)=>{const d=Math.min(...avoid.map(g=>Math.hypot(p.x-g.outline[0].x,p.y-g.outline[0].y)));return d>m.d?{p,d}:m},{d:-1}).p;c0={x:(c0.x+far.x*2)/3,y:(c0.y+far.y*2)/3}}
-  const clear=g=>avoid.every(o=>shapeArea(window.G.inter([g.outline],[o.outline]))<0.05);
+  const clear=g=>avoid.every(o=>shapeArea(window.G.inter([g.outline],[o.outline]))<0.05)&&rampOK(P,[...avoid,g]);
   let best=null;
   for(const rot of [ga,ga+90]){
     const g0=geom({...inst,x:0,y:0,rot});if(!g0)return null;
     // candidate centres on a 1 m lattice inside the plate, cached per result and core size
     const key=Math.min(g0.c.w,g0.c.d);
     if(latFor!==R){latFor=R;lattice.clear()}
-    if(!lattice.has(key)){const inner=offsetShape([outer],-key/2000),pts=[];
-      for(let x=bb.x0;x<=bb.x1;x+=1)for(let y=bb.y0;y<=bb.y1;y+=1){const p={x,y};if(inner.some(r=>pip(p,r)))pts.push(p)}
+    if(!lattice.has(key)){const inner=offsetShape(top,-key/2000),pts=[];
+      for(let x=bb.x0;x<=bb.x1;x+=1)for(let y=bb.y0;y<=bb.y1;y+=1){const p={x,y};if(inShape(p,inner))pts.push(p)}
       lattice.set(key,pts)}
     // nearest candidates first, searched in widening rings so only a few get sorted
     const all=lattice.get(key);let tried=0,lo=-1;
@@ -93,8 +117,8 @@ function place(P,R,inst,others,target){
       for(const {p,d} of ring){
         if(best&&d>=best.d)break search;if(++tried>400)break search;
         let i={...inst,x:p.x,y:p.y,rot},g=geom(i);
-        if(!fits(g,plates)||!clear(g))continue;
-        if(P.grid.snap){const s=window.GRID.snap(P,i,g),j={...i,...s},gs=geom(j);if(fits(gs,plates)&&clear(gs)){i=j;g=gs}}
+        if(!fits(g,plates)||!clear(g)||!onCorr(g))continue;
+        if(P.grid.snap){const s=window.GRID.snap(P,i,g),j={...i,...s},gs=geom(j);if(fits(gs,plates)&&clear(gs)&&onCorr(gs)){i=j;g=gs}}
         best={inst:i,d};break search;
       }
     }
@@ -125,20 +149,28 @@ const stairList=cores=>cores.map(geom).filter(Boolean).flatMap(g=>g.parts.filter
    point when two stairs lie in clearly different directions (more than 90° apart) and those stairs
    are between 9 m and the D2D6 maximum apart (45 m assumed for Class 2; editable).
    Returns the worst shortfall: 0 when every door passes. Distances are straight lines. */
+const fireEng=P=>P.coreRules.fire==="fe";
+const travelLim=P=>fireEng(P)?(+P.coreRules.feTravel||25):(+P.coreRules.travel||6);
 function travel(P,R,cores,pts){
   const st=stairList(cores);if(!st.length)return null;
   pts=pts||doorPoints(P,R);
-  const lim=+P.coreRules.travel||6,maxApart=+P.coreRules.exitsApart||45;
+  const lim=travelLim(P),maxApart=+P.coreRules.exitsApart||45,fe=fireEng(P);
+  // a door is served only by stairs in its own wing (separate buildings on the floor don't share exits)
+  const rings={};for(const g of R.groups)if(g.floors&&g.fp.length)rings[g.name]=g.fp.filter(r=>area(r)>0);
   let worst=0,at=null,far=0,choice=0;
   for(const p of pts){
-    const ds=st.map(s=>({s,d:distToPoly(p,s.poly)})).sort((a,b)=>a.d-b.d);
+    const wing=(rings[p.g]||[]).find(r=>pip(p,r));
+    const mine=wing?st.filter(s=>pip(s.c,wing)):st;
+    if(!mine.length){const short=1e3;if(short>worst){worst=short;at=p}continue}
+    const ds=mine.map(s=>({s,d:distToPoly(p,s.poly)})).sort((a,b)=>a.d-b.d);
     if(ds[0].d<=lim){far=Math.max(far,ds[0].d);continue}
+    if(fe){const short=ds[0].d-lim;if(short>worst){worst=short;at=p}continue}
     const a=ds[0],va={x:a.s.c.x-p.x,y:a.s.c.y-p.y};
     const ok=ds.slice(1).some(b=>{const vb={x:b.s.c.x-p.x,y:b.s.c.y-p.y},cos=(va.x*vb.x+va.y*vb.y)/((Math.hypot(va.x,va.y)*Math.hypot(vb.x,vb.y))||1),apart=Math.hypot(a.s.c.x-b.s.c.x,a.s.c.y-b.s.c.y);return cos<0&&apart>=9&&apart<=maxApart});
     if(ok){choice++;continue}
     const short=ds[0].d-lim;if(short>worst){worst=short;at=p}
   }
-  return {worst,where:at?at.g:"",p:at,far,choice,doors:pts.length};
+  return {worst,where:at?at.g:"",p:at,far,choice,doors:pts.length,lim,fe};
 }
 
 /* Smallest core that meets the exit and lift needs, then more of the same until every apartment door
@@ -147,13 +179,13 @@ function travel(P,R,cores,pts){
    above 25 m, single-stair cores together give the 2 exits. Returns the placed cores. */
 function suggest(P,R,maxCores=10){
   if(!LIB)return [];const n=needs(P,R);
-  const pts=doorPoints(P,R);
+  const pts=doorPoints(P,R),wings=corridorZone(P,R)&&smallestPlate(R).filter(r=>area(r)>0).length;
   const pick=k=>{
     const opts=[];
     for(const c of LIB.cores)for(const variant of [null,...Object.keys(c.variants||{})]){
       const s=spec({core:c.id,variant});
       if(s.cat==="lift"||s.cat==="stair")continue;
-      if(s.stairs<(k>=2?1:n.stairs)||s.lifts<Math.min(3,Math.max(n.lifts?1:0,Math.ceil(n.lifts/k))))continue;
+      if(s.stairs<(k>=2&&wings<2?1:n.stairs)||s.lifts<Math.min(3,Math.max(n.lifts?1:0,Math.ceil(n.lifts/k))))continue;
       opts.push({core:c.id,variant,area:s.w*s.d/1e6});
     }
     return opts.sort((a,b)=>a.area-b.area);
@@ -221,8 +253,10 @@ function checks(P,R,cores){
   }
   for(let a=0;a<geos.length;a++)for(let b=a+1;b<geos.length;b++){const o=shapeArea(window.G.inter([geos[a].outline],[geos[b].outline]));if(o>0.05)out.push(["bad",`Cores ${a+1} and ${b+1} overlap.`])}
   // rough travel: furthest apartment door from a stair
-  const t=travel(P,R,cores),laid=R.groups.some(g=>g.layout),depth=aptDepth(P),lim=+P.coreRules.travel||6,apart=+P.coreRules.exitsApart||45;
-  if(t)out.push(!t.p?["ok",`Every apartment door (${laid?"from the apartment layout":`taken on a corridor ${depth} m in from the facade`}) is within ${lim} m of a stair${t.choice?`, or between two stairs in different directions no more than ${apart} m apart`:""} (NCC D2D5 / D2D6, straight-line estimate).`]
+  const t=travel(P,R,cores),laid=R.groups.some(g=>g.layout),depth=aptDepth(P),lim=travelLim(P),apart=+P.coreRules.exitsApart||45;
+  if(t&&t.fe)out.push(!t.p?["ok",`Every apartment door (${laid?"from the apartment layout":`taken on a corridor ${depth} m in from the facade`}) is within ${lim} m of a stair in its own wing (straight line; furthest ${f1(t.far)} m). Beyond the 6 m of NCC D2D5 this relies on a fire-engineered performance solution, as in the reference schemes; confirm with the fire engineer.`]
+    :["warn",`Apartment doors on ${t.where} are ${t.worst>=999?"in a wing with no stair":`up to ${f1(t.worst+lim)} m from a stair`}: the fire-engineered limit set here is ${lim} m. Add or move a core.`]);
+  else if(t)out.push(!t.p?["ok",`Every apartment door (${laid?"from the apartment layout":`taken on a corridor ${depth} m in from the facade`}) is within ${lim} m of a stair${t.choice?`, or between two stairs in different directions no more than ${apart} m apart`:""} (NCC D2D5 / D2D6, straight-line estimate).`]
     :["warn",`Apartment doors on ${t.where} are up to ${f1(t.worst+lim)} m from a stair with no second stair the other way within ${apart} m; NCC D2D5 allows ${lim} m to an exit or point of choice. Add or move a core, or plan a fire-engineered solution.`]);
   return out;
 }

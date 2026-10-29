@@ -79,8 +79,9 @@ Known simplifications: the floorplate is the whole envelope, so big sites get ma
 | Setting | Default | Notes |
 |---|---|---|
 | Brief | Studio 32/38/44 m², 3.6 m, 0% · 1B 48/52/58, 5.6 m, 40% · 2B 68/75/82, 7.6 m, 45% · 3B 92/100/110, 9.6 m, 15% | min / target / max area, minimum facade width, mix by count. A placeholder Melbourne brief until the user sends theirs. |
-| Apartment depth | 9 m | Also the corridor line used for doors and the travel check. Clause 58 D27: 9 m for open plan with 2.7 m ceilings. |
-| Corridor | 1.6 m | Used when the plate is narrower than two apartments and a corridor (apartments get shallower). |
+| Apartment depth | 8 m (was 9) | Also the corridor line used for doors and the travel check, and half the wing depth in massing. The reference schemes use 7.5-8.5 m; Clause 58 D27 caps single-aspect open plan at 9 m with 2.7 m ceilings. |
+| Corridor | 1.6 m | Always this width. A plate wider than two apartments + corridor gets deeper apartments (up to the maximum depth); a thinner one gets shallower apartments. |
+| Max apartment depth | 12 m | Beyond this (a compact tower) apartments keep the set depth and the middle is a core zone. The no-wall zone at outside corners uses the set depth, not the deepened one. |
 | Party wall | 0.2 m | Thickness of the cuts. |
 | Grid | prefer | Walls prefer grid lines, then half-grid lines; or only on them; or ignore the grid. |
 
@@ -106,6 +107,46 @@ Tried and dropped: placing cores in the plate's middle first (outside the apartm
 - **Grid centred on the typical tower floor** (`GRID.centreOn`): its middle on a grid line, on a mid-bay, or "auto" (whichever puts the outer grid lines nearer the facade). "Align grid to core" switches to set-by-hand.
 - **Cores snap their centre** to a grid line or midway between two, both ways (`GRID.snap`).
 - **Corridor**: a band of corridor width (1.6 m default) just inside the apartments, drawn on the plan; a core that doesn't touch it is flagged.
+
+## Lessons from the reference drawings (massing, cores, travel)
+
+The user sent six Fraser & Partners feasibility reports as examples of good planning: 270 Queen St, 81 Waratah Ave Dalkeith, 64-78 Trenerry Cres Abbotsford, 1395-1405 Gold Coast Hwy Palm Beach, 91 Montague Rd South Brisbane and 4 Alfred Square St Kilda. What they share, and the planner did not do:
+
+| Scheme | Typical floor | Depth | Cores | Efficiency |
+|---|---|---|---|---|
+| 4 Alfred Square | one double-loaded bar, 7.0-7.2 m grid | 8.5 + corridor + 8.3 m | 1 (end of corridor), 8 apts/floor | 85% |
+| 91 Montague Rd | one double-loaded tower 40 × 22 m | about 10 + corridor + 10 m | 1 (centre, 3 lifts) | about 85% |
+| Palm Beach | two slim towers, central corridor | about 16 m | 1 per tower, in the middle | 87% |
+| Trenerry Cres | two bars with a 9 m courtyard | 16.2 m | small cores serving 2 units (north), corridor (south) | 84% |
+| Waratah Ave | L-shaped double-loaded wings | about 17 m, apartments 7.5 m | 1 at the knuckle | 62% overall |
+| 270 Queen St | linear core on the blank boundary | single-loaded | 1 | 68% |
+
+1. **Massing is wings of a standard depth, not the envelope.** Apartment + corridor + apartment (about 16-20 m), as parallel bars with a gap between, as wings round a courtyard, or a compact tower round a central core. The envelope is only the limit.
+2. **One core per building**, on the corridor (centre, end or knuckle). Doors are often 20-30 m from the stair: that is a fire-engineered performance solution, not the NCC D2D5 Deemed-to-Satisfy 6 m.
+3. **Apartments 7.5-8.5 m deep**, corridor 1.6-2 m.
+4. **Basement over the whole site**, cores standing in the parking rows, 5.8-6.4 m aisles, grid 7.0-8.4 m.
+
+What the planner now does (general moves):
+
+- **Massing** (`feasibility/massing.js`, Step 3 "Apartment floor massing"). On the typical apartment floor it scores: the full envelope, parallel double-loaded bars along and across the street (bands 2 × depth + corridor wide, the space between wings apart, slid across in 1 m then 0.5 m steps), and courtyard wings (only when the courtyard is at least the gap across). Score = sellable strip (one apartment depth from every facade), less dark floor beyond the corridor (× 1.5), with about 45 m² of core per wing taken from the dark floor first. "Auto" keeps the best; the full envelope wins when it is compact enough for a central core. The same bands (or courtyard ring) cut every apartment floor, so walls and cores stack. Slivers under 2 m are shaved off; pieces under 150 m² or much thinner than a wing are dropped; a floor too small for any wing keeps its envelope plate. Retail and car park levels are not cut.
+- **Cores on the corridor.** A suggested core must overlap the corridor zone (more than one apartment depth from every facade, or the shallower depth on a thin plate). Cores may stand in any wing, and a door counts only stairs in its own wing. Separate wings each get their own exits.
+- **Travel to exits** (Step 4): "Fire-engineered" (default, as in the reference schemes) passes a door within 25 m (editable) of a stair in its own wing and says a performance solution is needed; "NCC D2D5 Deemed-to-Satisfy" is the earlier 6 m / point-of-choice rule.
+- **Cores follow the building.** Suggested cores are re-suggested when the stack, massing, grid or rules change. Cores moved, swapped, added or edited by hand stay put.
+- **Apartment depth default 8 m** (was 9).
+- **Corridor stays 1.6 m** (user: "the area should go inside apartments"). Earlier, a plate wider than two apartments + corridor left the extra width as a wide grey corridor. Now apartments deepen to fill it, up to 12 m (`APTS.depthFor`); deeper than 9 m is flagged against Clause 58 D27.
+- **Corner rule:** a step under 1 m in a facade (where a wing meets a setback line) no longer counts as an outside corner, so it can't block walls over a whole wing end.
+
+**Bench** (`node bench/feas.js`, 21 lots × 3 zones, before → after): problems 0, no page errors.
+
+| Zone | Mean typical efficiency | Cores (all lots) | Apartments | Parking provided / required | Lots with no basement layout |
+|---|---|---|---|---|---|
+| MUZ 40 m | 63% → 85% | 138 → 63 | 5,246 → 5,376 | 6,408 / 10,515 → 7,266 / 11,095 | 3 → 1 |
+| GRZ | 69% → 90% | 105 → 51 | 1,249 → 1,269 | 1,949 / 1,795 → 2,669 / 1,854 | 5 → 1 |
+| RGZ | 71% → 88% | 102 → 54 | 1,422 → 1,481 | 2,396 / 2,049 → 3,004 / 2,112 | 2 → 0 |
+
+GFA falls (MUZ 843,987 → 676,961 m²) because dark envelope floor is no longer counted as building. Off-brief units rose (MUZ 59 → 120 of about 470 typical units): wing ends make corner units that fall between the brief's ranges.
+
+Worse on parking against the requirement: MUZ lots 0, 2 and 9 (Footscray, Footscray, Box Hill) and RGZ lot 14 (Port Melbourne). These are large lots where the wings' cores stand in the middle of the basement and the one-accessway engine leaves most of the level empty (e.g. MUZ lot 1: 61 spaces a level where an open level takes 244). The fix is in the basement engine (aisles round cores, a second accessway), not the massing.
 
 ## Phase 4: parking
 

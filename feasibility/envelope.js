@@ -59,6 +59,14 @@ function compute(P){
       for(const g of groups)g.fp=g.fp.length&&edge.length?inter(g.fp,edge):[];
     }
   }
+  /* Massing: apartment floors become wings of a standard depth (see massing.js) */
+  let mass=null;
+  const aptG=groups.filter(g=>g.floors&&g.use==="apartments"&&g.fp.length);
+  if(window.MASS&&P.mass&&aptG.length){
+    const ref=aptG.find(g=>P.apt&&g.id===P.apt.typical)||aptG.reduce((m,g)=>g.floors>m.floors||(g.floors===m.floors&&g.z0>m.z0)?g:m,aptG[0]);
+    mass=window.MASS.choose(P,ref.fp);
+    for(const g of aptG){g.env=g.fp;g.fp=window.MASS.apply(P,mass,g.fp)}
+  }
   for(const g of groups){
     g.fpArea=shapeArea(g.fp);g.gfa=g.fpArea*g.floors;g.nsa=g.gfa*eff(g);
     g.apts=g.use==="apartments"?Math.floor(g.nsa/Math.max(30,+P.aptSize||68)):0;
@@ -73,7 +81,7 @@ function compute(P){
   const spaces=groups.reduce((m,g)=>m+g.spaces,0);
   const allFp=groups.filter(g=>g.fp.length).map(g=>g.fp).flat();
   const covered=allFp.length?shapeArea(union(allFp)):0;
-  const res={siteArea,groups,trim,height,storeys,gfa,farGfa,far:farGfa/siteArea,nsa,apts,spaces,coverage:covered/siteArea*100,garden:(siteArea-covered)/siteArea*100};
+  const res={siteArea,groups,trim,mass,height,storeys,gfa,farGfa,far:farGfa/siteArea,nsa,apts,spaces,coverage:covered/siteArea*100,garden:(siteArea-covered)/siteArea*100};
   res.checks=checks(P,res);
   return res;
 }

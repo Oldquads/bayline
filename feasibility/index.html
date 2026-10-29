@@ -128,7 +128,12 @@
           <div class="fld"><label class="cap" for="aptSize">Average apartment m²</label><input id="aptSize" type="number" step="1" min="30"></div>
           <div class="fld"><label class="cap" for="effApt">Apartment efficiency %</label><input id="effApt" type="number" step="1" min="40" max="100"></div>
         </div>
-        <p class="hint">Each group's floorplate is the envelope at its top floor. Apartment numbers are a rough count (net area ÷ average size) until the apartment layout step.</p>
+        <div class="row">
+          <div class="fld" style="flex:2 1 200px"><label class="cap" for="massMode">Apartment floor massing</label><select id="massMode"></select></div>
+          <div class="fld"><label class="cap" for="massGap">Space between wings m</label><input id="massGap" type="number" step="0.5" min="3"></div>
+        </div>
+        <p class="hint" id="massMsg"></p>
+        <p class="hint">Each group's floorplate is the envelope at its top floor. Apartment floors are then cut to wings one apartment + corridor + apartment deep (the depth and corridor are set in step 6), as in built schemes, rather than filling the envelope. Apartment numbers are a rough count (net area ÷ average size) until the apartment layout step.</p>
       </section>
 
       <section class="panel" aria-labelledby="h-core">
@@ -145,7 +150,11 @@
         <div id="coreLib" class="corelib" role="list"></div>
         <div class="row">
           <div class="fld"><label class="cap" for="perLift">Apartments per lift</label><input id="perLift" type="number" step="5" min="10"></div>
-          <div class="fld"><label class="cap" for="travelLim">Door to exit m</label><input id="travelLim" type="number" step="0.5" min="1"></div>
+          <div class="fld" style="flex:2 1 200px"><label class="cap" for="fireMode">Travel to exits</label><select id="fireMode"><option value="fe">Fire-engineered: door to stair within a limit</option><option value="dts">NCC D2D5 Deemed-to-Satisfy</option></select></div>
+        </div>
+        <div class="row">
+          <div class="fld" id="feLimF"><label class="cap" for="feLim">Door to stair m (fire-engineered)</label><input id="feLim" type="number" step="1" min="6"></div>
+          <div class="fld" id="travelLimF"><label class="cap" for="travelLim">Door to exit m (D2D5)</label><input id="travelLim" type="number" step="0.5" min="1"></div>
         </div>
         <p class="hint">Click a library core to swap it into the selected slot. Drag cores on the plan to move them. The yellow edge is the lobby side. Exits follow NCC D2D3 (2 above 25 m effective height) and D2D5 travel; confirm with your building surveyor.</p>
       </section>
@@ -189,6 +198,7 @@
         <div class="row">
           <div class="fld"><label class="cap" for="aDepth">Apartment depth m</label><input id="aDepth" type="number" step="0.5" min="4"></div>
           <div class="fld"><label class="cap" for="aCorr">Corridor m</label><input id="aCorr" type="number" step="0.1" min="1"></div>
+          <div class="fld"><label class="cap" for="aMaxD">Max apartment depth m</label><input id="aMaxD" type="number" step="0.5" min="4"></div>
           <div class="fld"><label class="cap" for="aWall">Party wall m</label><input id="aWall" type="number" step="0.05" min="0.1"></div>
         </div>
         <div class="fld"><label class="cap" for="aSnap">Party walls and the grid</label><select id="aSnap"><option value="prefer">Prefer grid and half-grid lines</option><option value="only">Only on grid or half-grid lines</option><option value="off">Ignore the grid</option></select></div>
@@ -252,6 +262,7 @@
 <script src="../lib/geom.js"></script>
 <script src="../lib/vicmap.js"></script>
 <script src="rules.js"></script>
+<script src="massing.js"></script>
 <script src="envelope.js"></script>
 <script src="grid.js"></script>
 <script src="cores.js"></script>

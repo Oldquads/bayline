@@ -9,12 +9,21 @@
 const {area,bbox,centroid,diff,inter,union,shapeArea,offsetShape,D2R}=window.G;
 const STEP=0.4,EXT=1.5;
 
-function defaults(){return {depth:9,corridor:1.6,wall:0.2,snap:"prefer",typical:null,edits:{},
+function defaults(){return {depth:8,maxDepth:12,corridor:1.6,wall:0.2,snap:"prefer",typical:null,edits:{},
   types:[{name:"Studio",beds:0,min:32,target:38,max:44,width:3.6,mix:0},{name:"1B",beds:1,min:48,target:52,max:58,width:5.6,mix:40},
          {name:"2B",beds:2,min:68,target:75,max:82,width:7.6,mix:45},{name:"3B",beds:3,min:92,target:100,max:110,width:9.6,mix:15}]}}
 
 /* deepest inset that still leaves floor: half the plate's widest width */
 function maxInset(fp){let lo=0,hi=40;for(let k=0;k<14;k++){const m=(lo+hi)/2;if(offsetShape(fp,-m).length)lo=m;else hi=m}return lo}
+/* Apartment depth on a plate: the corridor stays at its set width and the rest of the width goes into
+   the apartments. Thinner than two apartments + corridor: shallower apartments. Wider: deeper apartments,
+   up to the maximum depth; wider still (a compact tower), the set depth and a core zone in the middle. */
+function depthFor(P,fp){
+  const A=P.apt,cw=+A.corridor||1.6,d0=+A.depth||8,dMax=Math.max(d0,+A.maxDepth||12),fit=maxInset(fp)-cw/2;
+  if(fit<d0)return {d:Math.max(3,fit),narrow:fit<d0-0.3,deep:false};
+  if(fit<=dMax)return {d:fit,narrow:false,deep:fit>d0+0.05};
+  return {d:d0,narrow:false,deep:false};
+}
 function simplify(r,tol){
   // drop points that barely change direction (Clipper leaves near-collinear points after offsets)
   let pts=r.slice(),changed=true;
@@ -33,7 +42,8 @@ function ringSamples(P,ring,d){
   const perim=s;
   // corner turn at the start of each edge: >0 convex (left turn), <0 reflex
   const turn=edges.map((E,i)=>{const p=edges[(i-1+n)%n].e;return Math.atan2(p.x*E.e.y-p.y*E.e.x,p.x*E.e.x+p.y*E.e.y)});
-  const convex=edges.filter((E,i)=>turn[i]>25*D2R).map(E=>E.s0);
+  // a real outside corner: a step under 1 m (where a wing meets a setback line) doesn't count
+  const convex=edges.filter((E,i)=>turn[i]>25*D2R&&E.L>=1&&edges[(i-1+n)%n].L>=1).map(E=>E.s0);
   const near=(x)=>convex.some(c=>{let dd=Math.abs(x-c);dd=Math.min(dd,perim-dd);return dd<d+0.05});
   const F=window.GRID.frame(P),g=P.grid;
   const samples=[];
@@ -122,8 +132,7 @@ function cutStrip(R,strip,cuts,d,wall){
 /* lay out one floorplate. edits: [{ring, s}] wall positions chosen by hand */
 function layoutPlate(P,fp,cores,edits){
   const A=P.apt,cw=+A.corridor||1.6,wall=+A.wall||0.2;
-  let d=+A.depth||9,narrow=false;
-  const r=maxInset(fp);if(2*r<2*d+cw){d=Math.max(3,r-cw/2);narrow=true}
+  const {d,narrow,deep}=depthFor(P,fp);
   const coreShapes=cores.map(c=>c.outline);
   const inner=offsetShape(fp,-d);
   let strip=inner.length?diff(fp,inner):fp.slice();
@@ -131,7 +140,9 @@ function layoutPlate(P,fp,cores,edits){
   const types=A.types.filter(t=>t.max>t.min&&t.target>0);
   const want={},tot=types.reduce((m,t)=>m+(+t.mix||0),0)||1;for(const t of types)want[t.name]=(+t.mix||0)/tot;
   const rings=fp.map(rg=>simplify(rg,0.12)).filter(rg=>rg.length>=3&&Math.abs(area(rg))>4);
-  const loops=rings.map(rg=>{const R=ringSamples(P,rg,d);return {R,slab:slabAreas(R,strip,d)}});
+  // no wall within one apartment depth (the brief's, not a deepened one) of an outside corner
+  const ban=Math.min(d,+A.depth||8);
+  const loops=rings.map(rg=>{const R=ringSamples(P,rg,ban);return {R,slab:slabAreas(R,strip,d)}});
   const allCuts=[];
   const manual=edits&&edits.length?edits:null;
   if(manual){for(const e of manual)if(loops[e.ring])allCuts.push({ring:e.ring,s:e.s})}
@@ -182,7 +193,7 @@ function layoutPlate(P,fp,cores,edits){
   const corridor=inner.length?diff(inner,offsetShape(fp,-(d+cw))):[];
   const plate=shapeArea(fp),nsa=units.reduce((m,u)=>m+u.area,0);
   const common=Math.max(0,plate-nsa-left.reduce((m,u)=>m+u.area,0));
-  return {d,narrow,inner,corridor,strip,units,left,cuts:allCuts,loops:loops.map(l=>({perim:l.R.perim,edges:l.R.edges,convex:l.R.convex})),plate,nsa,common,eff:nsa/plate};
+  return {d,ban,narrow,deep,inner,corridor,strip,units,left,cuts:allCuts,loops:loops.map(l=>({perim:l.R.perim,edges:l.R.edges,convex:l.R.convex})),plate,nsa,common,eff:nsa/plate};
 }
 
 function counts(units){const c={};for(const u of units)c[u.type]=(c[u.type]||0)+1;return c}
@@ -203,9 +214,9 @@ function clampCut(loop,s,d){
 /* split the apartment around facade position s in half: a wall midway between its two walls */
 function splitAt(L,ring,s){
   const lp=L.loops[ring],P=lp.perim,cs=L.cuts.filter(c=>c.ring===ring).map(c=>c.s).sort((a,b)=>a-b);
-  if(!cs.length)return clampCut(lp,s+P/2,L.d);
+  if(!cs.length)return clampCut(lp,s+P/2,L.ban||L.d);
   let a=cs[cs.length-1]-P,b=cs[0];for(let i=0;i<cs.length;i++){if(cs[i]>s){b=cs[i];a=i?cs[i-1]:cs[cs.length-1]-P;break}if(i===cs.length-1){a=cs[i];b=cs[0]+P}}
-  return clampCut(lp,(a+b)/2,L.d);
+  return clampCut(lp,(a+b)/2,L.ban||L.d);
 }
-window.APTS={clampCut,splitAt,defaults,layoutPlate,counts,mixText,project,pointAt,maxInset};
+window.APTS={depthFor,clampCut,splitAt,defaults,layoutPlate,counts,mixText,project,pointAt,maxInset};
 })();
