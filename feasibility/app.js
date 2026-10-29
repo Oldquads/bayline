@@ -31,7 +31,7 @@ function ensure(o){
   o.coreRules={aptsPerLift:60,aptDepth:8,travel:6,exitsApart:45,fire:"fe",feTravel:25,...(o.coreRules||{})};
   o.mass={...window.MASS.defaults(),...(o.mass||{})};
   o.coreView={cat:"all",suit:true,...(o.coreView||{})};
-  o.apt={...AP.defaults(),...(o.apt||{})};for(const t of o.apt.types)if(t.beds==null)t.beds=PK.bedsOf(t);if(o.coreRules.aptDepth&&!(o.apt&&o.apt._d)){o.apt.depth=o.coreRules.aptDepth;o.apt._d=1}
+  o.apt={...AP.defaults(),...(o.apt||{})};if(!o.apt._g){o.apt.snap="only";o.apt._g=1}for(const t of o.apt.types)if(t.beds==null)t.beds=PK.bedsOf(t);if(o.coreRules.aptDepth&&!(o.apt&&o.apt._d)){o.apt.depth=o.coreRules.aptDepth;o.apt._d=1}
   return o;
 }
 function gridOrigin(site){const a=site.pts[Math.min(site.front||0,site.pts.length-1)];return {ox:a.x,oy:a.y}}
@@ -498,9 +498,7 @@ function drawGrid(g,T,c){
   for(const u of L.U){const a=T(L.F.toW(u,L.bb.v0-ext)),b=T(L.F.toW(u,L.bb.v1+ext));g.beginPath();g.moveTo(a.x,a.y);g.lineTo(b.x,b.y);g.stroke()}
   for(const v of L.V){const a=T(L.F.toW(L.bb.u0-ext,v)),b=T(L.F.toW(L.bb.u1+ext,v));g.beginPath();g.moveTo(a.x,a.y);g.lineTo(b.x,b.y);g.stroke()}
   g.restore();
-  const geos=P.cores.map(C.geom).filter(Boolean);
-  const cols=GR.columns(P,base.fp,geos),s=Math.max(3,(+P.grid.col||0.6)*planT.k);
-  g.fillStyle=c.ink;for(const p of cols){const q=T(p);g.fillRect(q.x-s/2,q.y-s/2,s,s)}
+  // no columns drawn on the floor plan: party walls on the grid carry the floors (columns only in the parking view)
 }
 let planT=null;
 

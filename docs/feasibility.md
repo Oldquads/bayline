@@ -83,7 +83,7 @@ Known simplifications: the floorplate is the whole envelope, so big sites get ma
 | Corridor | 1.6 m | Always this width. A plate wider than two apartments + corridor gets deeper apartments (up to the maximum depth); a thinner one gets shallower apartments. |
 | Max apartment depth | 12 m | Beyond this (a compact tower) apartments keep the set depth and the middle is a core zone. The no-wall zone at outside corners uses the set depth, not the deepened one. |
 | Party wall | 0.2 m | Thickness of the cuts. |
-| Grid | prefer | Walls prefer grid lines, then half-grid lines; or only on them; or ignore the grid. |
+| Party walls and the grid | on grid lines | Walls only on grid lines (default, from the user's markup); or on grid and half-grid lines; or anywhere. |
 
 How a floor is cut (general moves, no site fixes):
 
@@ -147,6 +147,19 @@ What the planner now does (general moves):
 GFA falls (MUZ 843,987 → 676,961 m²) because dark envelope floor is no longer counted as building. Off-brief units rose (MUZ 59 → 120 of about 470 typical units): wing ends make corner units that fall between the brief's ranges.
 
 Worse on parking against the requirement: MUZ lots 0, 2 and 9 (Footscray, Footscray, Box Hill) and RGZ lot 14 (Port Melbourne). These are large lots where the wings' cores stand in the middle of the basement and the one-accessway engine leaves most of the level empty (e.g. MUZ lot 1: 61 spaces a level where an open level takes 244). The fix is in the basement engine (aisles round cores, a second accessway), not the massing.
+
+## Double-loaded rows (user markup, after the massing change)
+
+The user marked up the example site: one straight 1.6 m corridor down the middle of the wing, end to end; one row of apartments each side running from the facade to the corridor; party walls square to the corridor on the grid lines; no columns drawn. The facade-strip method (insetting from every facade) made corner-wrapping units and corridor scraps round the ends.
+
+- **Rows** (`rowPlate` in `apartments.js`): a piece of the floor is a wing when it has no holes, fills at least 85% of its box square to the grid, and is no wider than two apartments of the maximum depth plus the corridor. It gets a corridor band down the middle along its long side, and two rows from facade to corridor (all the width beyond the corridor is apartment). Wall positions are grid lines (or half-grid / anywhere, by the setting), the faces of cores and the row ends. A shortest path per row against the brief chooses which, with per-type weights tuned over 7 rounds towards the mix. Doors are on the corridor edge.
+- Other pieces (courtyard rings, irregular plates) still use the facade-strip method, with hand edits.
+- Wall setting default is now "on grid lines" (saved projects switch once).
+- The floor plan no longer draws columns; the parking view still does.
+
+With the default 8.4 m grid and 10-11 m deep apartments, one bay is about 90 m², so the walls-on-grid rule gives mostly 2B and 3B. A smaller grid along the wing, or "grid and half-grid lines", gives 1B apartments.
+
+Bench after rows (problems 0, no page errors), against the massing change before it: apartments MUZ 5,376 → 3,624, GRZ 1,269 → 957, RGZ 1,481 → 1,055; mean typical efficiency 85/90/88% → 83/84/84%; off-brief units up (MUZ 120 → 157). The drop is the 8.4 m grid: every apartment is a whole number of 8.4 m bays. The open question for the user is the bay module along the wings.
 
 ## Phase 4: parking
 

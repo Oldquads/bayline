@@ -24,7 +24,9 @@ function score(P,sh){
   const {d,cw}=depths(P),A=shapeArea(sh);if(A<1)return -1e9;
   let s=0;
   for(const pc of pieces(sh)){
-    const a=shapeArea(pc),in1=offsetShape(pc,-d),strip=a-shapeArea(in1),dark=in1.length?shapeArea(offsetShape(pc,-(d+cw))):0;
+    // apartments deepen to keep the corridor at its width (as the layout does)
+    const de=window.APTS?Math.max(d,window.APTS.depthFor(P,pc).d):d;
+    const a=shapeArea(pc),in1=offsetShape(pc,-de),strip=a-shapeArea(in1),dark=in1.length?shapeArea(offsetShape(pc,-(de+cw))):0;
     s+=strip-Math.max(0,CORE-dark)-Math.max(0,dark-CORE)*1.5;
   }
   return s;

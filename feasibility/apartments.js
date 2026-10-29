@@ -9,7 +9,7 @@
 const {area,bbox,centroid,diff,inter,union,shapeArea,offsetShape,D2R}=window.G;
 const STEP=0.4,EXT=1.5;
 
-function defaults(){return {depth:8,maxDepth:12,corridor:1.6,wall:0.2,snap:"prefer",typical:null,edits:{},
+function defaults(){return {depth:8,maxDepth:12,corridor:1.6,wall:0.2,snap:"only",typical:null,edits:{},
   types:[{name:"Studio",beds:0,min:32,target:38,max:44,width:3.6,mix:0},{name:"1B",beds:1,min:48,target:52,max:58,width:5.6,mix:40},
          {name:"2B",beds:2,min:68,target:75,max:82,width:7.6,mix:45},{name:"3B",beds:3,min:92,target:100,max:110,width:9.6,mix:15}]}}
 
@@ -93,7 +93,7 @@ function solveLoop(R,slab,types,lam,snap,st,wallLoss){
   const cost=new Float64Array(m+1).fill(Infinity),from=new Int32Array(m+1).fill(-1),what=new Array(m+1);
   cost[0]=0;
   const sv=new Float64Array(m+1);for(let k=0;k<=m;k++)sv[k]=sAt(k);
-  const cutOK=k=>k===m||pos(k).ok&&(snap!=="only"||pos(k).kind==="grid"||pos(k).kind==="half");
+  const cutOK=k=>k===m||pos(k).ok&&(snap!=="only"||pos(k).kind==="grid");
   const bonus=k=>{if(k===m)return 0;const kd=pos(k).kind;return snap==="off"?0:kd==="grid"?-0.12:kd==="half"?-0.05:0};
   for(let k=0;k<m;k++){
     if(cost[k]===Infinity)continue;
@@ -129,8 +129,108 @@ function cutStrip(R,strip,cuts,d,wall){
   return knives.length?diff(strip,knives):strip;
 }
 
-/* lay out one floorplate. edits: [{ring, s}] wall positions chosen by hand */
+/* Lay out one floorplate. Wing-shaped pieces (a bar square to the grid, no wider than two of the deepest
+   apartments and a corridor) get double-loaded rows; any other piece gets the facade-strip method.
+   edits: [{ring, s}] wall positions chosen by hand (facade-strip pieces only). */
 function layoutPlate(P,fp,cores,edits){
+  const pcs=piecesOf(fp),rows=[],rest=[];
+  for(const pc of pcs){const b=barOf(P,pc);if(b)rows.push(b);else rest.push(...pc)}
+  if(!rows.length)return stripPlate(P,fp,cores,edits);
+  const R=rowPlate(P,rows,cores),S=rest.length?stripPlate(P,rest,cores,edits):null;
+  const plate=shapeArea(fp),units=[...R.units,...(S?S.units:[])],left=[...R.left,...(S?S.left:[])],nsa=units.reduce((m,u)=>m+u.area,0);
+  const d0=+P.apt.depth||8,d=Math.max(R.d,S?S.d:0);
+  return {d,ban:S?S.ban:d0,narrow:R.d<d0-0.3||!!(S&&S.narrow),deep:R.d>d0+0.05||!!(S&&S.deep),inner:[...R.corridor,...(S?S.inner:[])],corridor:[...R.corridor,...(S?S.corridor:[])],
+    strip:[...R.strip,...(S?S.strip:[])],units,left,cuts:S?S.cuts:[],loops:S?S.loops:[],rows:rows.length,plate,nsa,common:Math.max(0,plate-nsa-left.reduce((m,u)=>m+u.area,0)),eff:nsa/plate};
+}
+const piecesOf=sh=>{const hs=sh.filter(r=>area(r)<0);return sh.filter(r=>area(r)>0).map(o=>[o,...hs.filter(h=>window.G.pip(h[0],o))])};
+
+/* A piece is a wing when it has no holes, fills most of its box square to the grid, and is no wider
+   than two apartments of the maximum depth plus the corridor. The long side is "along". */
+function barOf(P,pc){
+  if(pc.length!==1)return null;
+  const F=window.GRID.frame(P),q=pc[0].map(p=>F.toG(p));
+  const u0=Math.min(...q.map(p=>p.u)),u1=Math.max(...q.map(p=>p.u)),v0=Math.min(...q.map(p=>p.v)),v1=Math.max(...q.map(p=>p.v));
+  const alongU=u1-u0>=v1-v0,a0=alongU?u0:v0,a1=alongU?u1:v1,c0=alongU?v0:u0,c1=alongU?v1:u1,W=c1-c0;
+  const cw=+P.apt.corridor||1.6,dMax=Math.max(+P.apt.depth||8,+P.apt.maxDepth||12),d=(W-cw)/2;
+  if(d<4||d>dMax+0.05||Math.abs(area(pc[0]))<0.85*(a1-a0)*W)return null;
+  // world point from (along, across)
+  const W2=(a,c)=>alongU?F.toW(a,c):F.toW(c,a);
+  const rect=(x0,x1,y0,y1)=>{const r=[W2(x0,y0),W2(x1,y0),W2(x1,y1),W2(x0,y1)];return area(r)<0?r.reverse():r};
+  return {pc,alongU,a0,a1,c0,c1,d,cw,W2,rect,sp:alongU?+P.grid.sx:+P.grid.sy,toA:p=>{const g=F.toG(p);return alongU?g.u:g.v}};
+}
+/* A unit's type from its area (shared by both methods) */
+function typeOf(a,types){
+  const live=types.filter(t=>t.mix>0),pool=live.length?live:types,near=(xs)=>xs.slice().sort((x,y)=>Math.abs(a-x.target)-Math.abs(a-y.target))[0];
+  const fit=near(pool.filter(t=>a>=t.min&&a<=t.max));
+  if(fit)return {name:fit.name,ok:true};
+  // matches only a type the brief doesn't want (mix 0): keep its name, but off brief
+  const spare=near(types.filter(t=>a>=t.min&&a<=t.max));
+  const lo=Math.min(...pool.map(t=>t.min)),hi=Math.max(...pool.map(t=>t.max));
+  if(a<lo*0.85)return null;
+  // between ranges: nearest type, flagged off brief; above every range: oversize
+  return {name:spare?spare.name:a>hi?"Oversize":near(pool).name,ok:false};
+}
+/* Double-loaded rows (as in built schemes): a straight corridor down the middle of the wing, end to end,
+   and one row of apartments each side from the facade to the corridor, so all the width beyond the
+   corridor is apartment. Party walls are square to the corridor on grid lines (or half-grid lines /
+   anywhere, by the grid setting) and at the faces of cores; which ones is a shortest-path choice per
+   row against the brief, with per-type weights tuned so the counts approach the mix. */
+function rowPlate(P,bars,cores){
+  const A=P.apt,wall=+A.wall||0.2,coreShapes=cores.map(c=>c.outline);
+  const types=A.types.filter(t=>t.max>t.min&&t.target>0);
+  const want={},tot=types.reduce((m,t)=>m+(+t.mix||0),0)||1;for(const t of types)want[t.name]=(+t.mix||0)/tot;
+  const live=types.filter(t=>t.mix>0||types.every(u=>!u.mix)),minA=Math.min(...live.map(t=>t.min)),maxA=Math.max(...live.map(t=>t.max));
+  const rows=[],corridor=[];
+  for(const b of bars){
+    const mid=(b.c0+b.c1)/2,h=b.cw/2,E=1;
+    let cor=inter([b.pc[0]],[b.rect(b.a0-E,b.a1+E,mid-h,mid+h)]);if(coreShapes.length)cor=diff(cor,coreShapes);corridor.push(...cor);
+    for(const [y0,y1,dy] of [[b.c0-E,mid-h,mid-h],[mid+h,b.c1+E,mid+h]]){
+      let sh=inter([b.pc[0]],[b.rect(b.a0-E,b.a1+E,y0,y1)]);if(coreShapes.length)sh=diff(sh,coreShapes);if(shapeArea(sh)<1)continue;
+      // wall positions: grid lines (by the grid setting), core faces, and the row ends
+      const xs=new Set([b.a0,b.a1]),step=A.snap==="off"?0.4:A.snap==="only"?b.sp:b.sp/2;
+      for(let k=Math.ceil((b.a0+0.5)/step);k*step<b.a1-0.5;k++)xs.add(+(k*step).toFixed(3));
+      for(const c of coreShapes){const as=c.map(b.toA),lo=Math.min(...as),hi=Math.max(...as);if(hi>b.a0&&lo<b.a1){if(lo>b.a0+0.5)xs.add(lo);if(hi<b.a1-0.5)xs.add(hi)}}
+      const X=[...xs].sort((p,q)=>p-q);
+      const seg=X.slice(1).map((x,i)=>shapeArea(inter(sh,[b.rect(X[i],x,y0-E,y1+E)])));
+      rows.push({b,sh,X,seg,door:dy,y0,y1});
+    }
+  }
+  const solve=(r,lam)=>{
+    const m=r.X.length-1,pre=[0];for(const v of r.seg)pre.push(pre[pre.length-1]+v);
+    const cost=new Array(m+1).fill(Infinity),from=new Array(m+1).fill(-1),what=new Array(m+1);cost[0]=0;
+    for(let i=0;i<m;i++){if(cost[i]===Infinity)continue;
+      for(let j=i+1;j<=m;j++){const Ar=pre[j]-pre[i]-wall*r.b.d,w=r.X[j]-r.X[i];
+        if(Ar<minA*0.98){const c=cost[i]+0.6+Ar/20;if(c<cost[j]){cost[j]=c;from[j]=i;what[j]=null}continue}
+        for(const t of live){if(Ar<t.min||Ar>t.max||w<t.width*0.98)continue;const c=cost[i]+((Ar-t.target)/t.target)**2*8+(lam[t.name]||0);if(c<cost[j]){cost[j]=c;from[j]=i;what[j]=t.name}}
+        if(Ar>maxA){const c=cost[i]+4+(Ar-maxA)/10;if(c<cost[j]){cost[j]=c;from[j]=i;what[j]="?"}break}
+      }}
+    const cuts=[],ts=[];for(let j=m;j>0;j=from[j]){cuts.push(j);ts.push(what[j])}
+    return {cost:cost[m],cuts:[0,...cuts.reverse()],types:ts};
+  };
+  let lam={};for(const t of types)lam[t.name]=0;let best=null;
+  for(let it=0;it<7;it++){
+    const sol=rows.map(r=>solve(r,lam)),cnt={};let n=0;
+    for(const s of sol)for(const t of s.types)if(t&&t!=="?"){cnt[t]=(cnt[t]||0)+1;n++}
+    const err=types.reduce((m,t)=>m+Math.abs((cnt[t.name]||0)/(n||1)-want[t.name]),0);
+    const score=err*3+sol.reduce((m,s)=>m+s.cost,0)/Math.max(1,n)*0.2;
+    if(!best||score<best.score)best={score,sol};
+    for(const t of types)lam[t.name]+=1.2*((cnt[t.name]||0)/(n||1)-want[t.name]);
+  }
+  const units=[],left=[],strip=[];
+  rows.forEach((r,ri)=>{strip.push(...r.sh);const s=best.sol[ri];
+    for(let k=0;k+1<s.cuts.length;k++){
+      const x0=r.X[s.cuts[k]],x1=r.X[s.cuts[k+1]],hw=wall/2;
+      const pcs=piecesOf(inter(r.sh,[r.b.rect(x0+(k?hw:0),x1-(k+2<s.cuts.length?hw:0),r.y0-1,r.y1+1)]));
+      for(const pc of pcs){const a=shapeArea(pc);if(a<1)continue;const t=typeOf(a,types);
+        if(!t){left.push({poly:pc[0],rings:pc,area:a});continue}
+        const xm=Math.max(x0,Math.min(x1,(x0+x1)/2));
+        units.push({poly:pc[0],rings:pc,area:a,type:t.name,ok:t.ok,door:r.b.W2(xm,r.door),width:x1-x0})}
+    }});
+  return {d:Math.max(...bars.map(b=>b.d)),units,left,strip,corridor};
+}
+
+/* the facade-strip method, for pieces that aren't wings */
+function stripPlate(P,fp,cores,edits){
   const A=P.apt,cw=+A.corridor||1.6,wall=+A.wall||0.2;
   const {d,narrow,deep}=depthFor(P,fp);
   const coreShapes=cores.map(c=>c.outline);
@@ -177,17 +277,11 @@ function layoutPlate(P,fp,cores,edits){
   for(const pc of pieces){
     if(area(pc)<=0)continue;
     const hs=holes.filter(h=>window.G.pip(h[0],pc)),a=area(pc)+hs.reduce((m,h)=>m+area(h),0),rings=[pc,...hs];
-    const live=types.filter(t=>t.mix>0),pool=live.length?live:types;
-    let fit=pool.filter(t=>a>=t.min&&a<=t.max).sort((x,y)=>Math.abs(a-x.target)-Math.abs(a-y.target))[0];
-    // matches only a type the brief doesn't want (mix 0): keep its name, but off brief
-    const spare=fit?null:types.filter(t=>a>=t.min&&a<=t.max).sort((x,y)=>Math.abs(a-x.target)-Math.abs(a-y.target))[0];
-    const lo=Math.min(...pool.map(t=>t.min)),hi=Math.max(...pool.map(t=>t.max));
-    if(!fit&&a<lo*0.85){left.push({poly:pc,rings,area:a});continue}
-    // between ranges: nearest type, flagged off brief; above every range: oversize
-    const near=fit||spare||(a>hi?null:pool.slice().sort((x,y)=>Math.abs(a-x.target)-Math.abs(a-y.target))[0]);
+    const ty=typeOf(a,types);
+    if(!ty){left.push({poly:pc,rings,area:a});continue}
     const c=centroid(pc);let door=c;
     if(innerRings){let bd=1e9;for(const rg of inner)for(let i=0;i<rg.length;i++){const p=rg[i],q=rg[(i+1)%rg.length],dx=q.x-p.x,dy=q.y-p.y,l=dx*dx+dy*dy||1e-9,t=Math.max(0,Math.min(1,((c.x-p.x)*dx+(c.y-p.y)*dy)/l)),x={x:p.x+t*dx,y:p.y+t*dy},dd=Math.hypot(x.x-c.x,x.y-c.y);if(dd<bd){bd=dd;door=x}}}
-    units.push({poly:pc,rings,area:a,type:near?near.name:"Oversize",ok:!!fit,door,width:a/d});
+    units.push({poly:pc,rings,area:a,type:ty.name,ok:ty.ok,door,width:a/d});
   }
   // corridor: a band of corridor width just inside the apartments (where the doors are)
   const corridor=inner.length?diff(inner,offsetShape(fp,-(d+cw))):[];
