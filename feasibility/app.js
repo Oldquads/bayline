@@ -283,7 +283,7 @@ function drawPlan(){
   const {W,H,dpr}=canvasSize(),g=cv.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);
   const c={bg:css("--surface"),ink:css("--ink"),muted:css("--muted"),site:css("--site"),sunk:css("--sunk"),accent:css("--accent"),rule:css("--rule")};
   g.fillStyle=c.bg;g.fillRect(0,0,W,H);
-  const pts=P.site.pts,bb=bbox(pts),pad=56;
+  const pts=P.site.pts,bb=bbox(pts),pad=Math.max(56,Math.min(W,H)*0.1);
   const k=Math.min((W-2*pad)/Math.max(1,bb.x1-bb.x0),(H-2*pad)/Math.max(1,bb.y1-bb.y0));
   const ox=(W-(bb.x1-bb.x0)*k)/2-bb.x0*k,oy=(H+(bb.y1-bb.y0)*k)/2+bb.y0*k;
   const T=p=>({x:ox+p.x*k,y:oy-p.y*k});
@@ -333,7 +333,7 @@ function draw3d(){
   const raw=(p,z)=>({x:U(p),y:-(V(p)*se+z*ce)});
   const top=Math.max(envelopeTop(),RES.height);
   const all=[];for(const p of P.site.pts){all.push(raw(p,0),raw(p,top))}
-  const bb=bbox(all),pad=40,k=Math.min((W-2*pad)/Math.max(1,bb.x1-bb.x0),(H-2*pad)/Math.max(1,bb.y1-bb.y0));
+  const bb=bbox(all),pad=Math.max(48,Math.min(W,H)*0.1),k=Math.min((W-2*pad)/Math.max(1,bb.x1-bb.x0),(H-2*pad)/Math.max(1,bb.y1-bb.y0));
   const ox=(W-(bb.x1-bb.x0)*k)/2-bb.x0*k,oy=(H-(bb.y1-bb.y0)*k)/2-bb.y0*k;
   const T=(p,z)=>{const q=raw(p,z);return {x:ox+q.x*k,y:oy+q.y*k}};
   const poly=(ring,z)=>{g.beginPath();ring.forEach((p,i)=>{const q=T(p,z);i?g.lineTo(q.x,q.y):g.moveTo(q.x,q.y)});g.closePath()};
@@ -671,7 +671,7 @@ function drawPark(){
   const {W,H,dpr}=canvasSize(),g=cv.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);
   const c={bg:css("--surface"),ink:css("--ink"),muted:css("--muted"),site:css("--site"),sunk:css("--sunk"),accent:css("--accent"),aisle:"#C3CCC6"};
   g.fillStyle=c.sunk;g.fillRect(0,0,W,H);
-  const pts=P.site.pts,bb=bbox(pts),pad=40,k=Math.min((W-2*pad)/Math.max(1,bb.x1-bb.x0),(H-2*pad)/Math.max(1,bb.y1-bb.y0));
+  const pts=P.site.pts,bb=bbox(pts),pad=Math.max(56,Math.min(W,H)*0.1),k=Math.min((W-2*pad)/Math.max(1,bb.x1-bb.x0),(H-2*pad)/Math.max(1,bb.y1-bb.y0));
   const ox=(W-(bb.x1-bb.x0)*k)/2-bb.x0*k,oy=(H+(bb.y1-bb.y0)*k)/2+bb.y0*k,T=p=>({x:ox+p.x*k,y:oy-p.y*k});
   planT=null;
   path(g,T,pts);g.lineWidth=1.5;g.strokeStyle=c.site;g.stroke();
@@ -741,7 +741,29 @@ function parsePaste(txt){
 }
 
 /* ---------- Events ---------- */
+/* Side panels fold: opening one folds the others. The open one is remembered. */
+const OPEN_KEY="bayline-feas-open";
+function foldPanels(){
+  const panels=[...document.querySelectorAll("aside .panel")];
+  let open=null;try{open=localStorage.getItem(OPEN_KEY)}catch(e){}
+  if(!panels.some(p=>p.getAttribute("aria-labelledby")===open))open=panels[0]&&panels[0].getAttribute("aria-labelledby");
+  const set=id=>{for(const p of panels){const on=p.getAttribute("aria-labelledby")===id;p.classList.toggle("open",on);p.querySelector("h2").setAttribute("aria-expanded",on)}
+    try{localStorage.setItem(OPEN_KEY,id||"")}catch(e){}
+    // canvases inside a panel that was folded need a redraw once visible
+    requestAnimationFrame(()=>{renderCoreLib&&(libKey="",renderCoreLib())})};
+  for(const p of panels){
+    const h=p.querySelector("h2"),body=document.createElement("div");body.className="pbody";
+    while(h.nextSibling)body.appendChild(h.nextSibling);p.appendChild(body);
+    h.tabIndex=0;h.setAttribute("role","button");
+    const id=p.getAttribute("aria-labelledby");
+    const go=()=>set(p.classList.contains("open")?null:id);
+    h.addEventListener("click",e=>{if(e.target.closest("input,select,button,a"))return;go()});
+    h.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();go()}});
+  }
+  set(open);
+}
 function bind(){
+  foldPanels();
   $("#zone").addEventListener("change",e=>{P.zone={...P.zone,key:e.target.value,auto:false};resetForZone(e.target.value);$("#maxMsg").textContent=""});
   $("#zoneSched").addEventListener("input",e=>{P.zone.sched=e.target.value;save()});
   const num=(id,k)=>$(id).addEventListener("input",e=>{P.ctl[k]=numOrNull(e.target.value);schedule()});
