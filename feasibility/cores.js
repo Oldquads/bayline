@@ -58,7 +58,7 @@ function needs(P,R){
 function smallestPlate(R){const gs=R.groups.filter(g=>g.floors&&g.fp.length);if(!gs.length)return [];return gs.reduce((m,g)=>g.fpArea<shapeArea(m)?g.fp:m,gs[0].fp)}
 const fits=(geo,plates)=>plates.every(p=>shapeArea(diff([geo.outline],p))<0.05);
 /* where a core may stand: inside every floorplate it passes through (cached per result) */
-let zoneFor=null,zoneShape=null,corrShape=null;
+let zoneFor=null,zoneShape=null,corrShape=null,withinShape=null;
 function coreZone(R){if(zoneFor===R)return zoneShape;const ps=R.groups.filter(g=>g.floors&&g.fp.length).map(g=>g.fp);
   let z=ps[0]||[];for(const p of ps.slice(1))z=window.G.inter(z,p);zoneFor=R;zoneShape=z;corrShape=null;return z}
 /* where the corridor can be on the typical apartment floor: more than one apartment depth from every facade.
@@ -66,9 +66,10 @@ function coreZone(R){if(zoneFor===R)return zoneShape;const ps=R.groups.filter(g=
 function corridorZone(P,R){coreZone(R);if(corrShape)return corrShape;
   const gs=R.groups.filter(g=>g.floors&&g.use==="apartments"&&g.fp.length);if(!gs.length)return corrShape=[];
   const t=gs.reduce((m,g)=>g.floors>m.floors||(g.floors===m.floors&&g.z0>m.z0)?g:m,gs[0]);
-  // as the apartment layout does: a plate thinner than two apartments and a corridor gets shallower apartments
-  const d=window.APTS?window.APTS.depthFor(P,t.fp).d:aptDepth(P);
-  return corrShape=offsetShape(t.fp,-d)}
+  // as the apartment layout does: the corridor of each wing (straight rows or H plan), or for other plates
+  // the zone beyond one apartment depth from every facade
+  if(window.APTS){const z=window.APTS.coreZones(P,t.fp);withinShape=z.within;return corrShape=z.touch}
+  withinShape=[];return corrShape=offsetShape(t.fp,-aptDepth(P))}
 /* A basement ramp needs a clear lane in from the street: ramp width + 1 m wide, ramp length + 6 m deep.
    True when some lane along the frontage misses every core (or when no lane fits even with no cores). */
 function rampLane(P){
@@ -86,7 +87,36 @@ const inShape=(p,sh)=>sh.some(r=>area(r)>0&&pip(p,r))&&!sh.some(r=>area(r)<0&&pi
 
 let latFor=null;const lattice=new Map();
 /* place a core inside the plates: nearest spot to the plate centre, square to the grid, snapped if possible */
-function place(P,R,inst,others,target){return placeIn(P,R,inst,others,target,true)||placeIn(P,R,inst,others,target,false)}
+/* A split core (stair block and lift block with a lobby gap between) straddles the corridor: the corridor
+   runs through the gap. Other cores sit beside the corridor. */
+function gapOffset(s){if(!s)return null;let y=s.d/2000;for(const r of s.rows){const d=r.d/1000;if(r.parts.length===1&&r.parts[0].t==="gap")return y-d/2;y-=d}return null}
+const isSplit=inst=>gapOffset(spec(inst))!=null;
+function place(P,R,inst,others,target){
+  if(isSplit(inst)){const p=placeSplit(P,R,inst,others,target);if(p)return p}
+  return placeIn(P,R,inst,others,target,true)||placeIn(P,R,inst,others,target,false)}
+/* split core on a wing's corridor centre line, square to the wing, centred on a grid line or mid-bay,
+   nearest the target (the plate's middle, or the doors a new core has to serve) */
+function placeSplit(P,R,inst,others,target){
+  const gs=R.groups.filter(g=>g.floors&&g.use==="apartments"&&g.fp.length);if(!gs.length||!window.APTS)return null;
+  const t=gs.reduce((m,g)=>g.floors>m.floors||(g.floors===m.floors&&g.z0>m.z0)?g:m,gs[0]);
+  let wings=window.APTS.wingLines(P,t.fp);
+  // a core for given doors goes in their own wing; a piece of floor that isn't a wing takes another kind of core
+  if(target){const own=wings.find(w=>pip(target,w.pc[0]));if(own)wings=[own]}
+  wings=wings.filter(w=>!w.none);if(!wings.length)return null;
+  const s=spec(inst),off=gapOffset(s),half=s.w/2000,plates=[coreZone(R)],ga=window.GRID.angle(P)/D2R;
+  const avoid=(others||[]).map(geom).filter(Boolean);
+  const outer=t.fp.filter(r=>area(r)>0).sort((a,b)=>area(b)-area(a))[0],c0=target||centroid(outer);
+  let best=null;
+  for(const w of wings){const hb=w.sp/2,rot=w.alongU?ga:ga+90,sg=w.alongU?1:-1;
+    for(let k=Math.ceil((w.a0+half)/hb);k*hb<=w.a1-half+1e-6;k++)for(const fy of [false,true]){
+      // the core's centre sits so the gap's middle is on the corridor's centre line
+      const c=w.W2(k*hb,w.mid-sg*(fy?-off:off)),i={...inst,x:c.x,y:c.y,rot,fx:false,fy},g=geom(i);
+      const dd=Math.hypot(c.x-c0.x,c.y-c0.y);if(best&&dd>=best.d)continue;
+      if(!fits(g,plates))continue;
+      if(!avoid.every(o=>shapeArea(window.G.inter([g.outline],[o.outline]))<0.05)||!rampOK(P,[...avoid,g]))continue;
+      best={inst:i,d:dd}}}
+  return best&&best.inst;
+}
 function placeIn(P,R,inst,others,target,useCorr){
   const plates=[coreZone(R)];
   const top=smallestPlate(R);if(!top.length)return null;
@@ -94,8 +124,13 @@ function placeIn(P,R,inst,others,target,useCorr){
   const avoid=(others||[]).map(geom).filter(Boolean);
   const bb=bbox(outs.flat()),ga=window.GRID.angle(P)/D2R,corr=useCorr?corridorZone(P,R):[];
   // the core opens onto the corridor but doesn't cut it in two
-  const nCorr=corr.filter(r=>area(r)>0).length;
-  const onCorr=g=>!corr.length||shapeArea(window.G.inter([g.outline],corr))>0.5&&window.G.diff(corr,[g.outline]).filter(r=>area(r)>0).length<=nCorr;
+  // H wings: the core sits mostly in the corridor band and the inner tier, so the spurs can run either side of it
+  const within=useCorr&&withinShape?withinShape:[];
+  // a core never sits on the corridor: its stair and lift blocks stay off it, and it touches the corridor's edge
+  const band=corridorZone(P,R),near=band.length?offsetShape(band,0.4):[];
+  const solid=g=>g.parts.filter(p=>p.t!=="gap").map(p=>p.poly);
+  const onCorr=g=>(!band.length||shapeArea(window.G.inter(solid(g),band))<0.2)&&(!corr.length||shapeArea(window.G.inter([g.outline],near))>0.5
+    &&(!within.length||shapeArea(window.G.inter([g.outline],within))>=0.6*Math.abs(area(g.outline))));
   // aim for the plate centre, or for a second core, halfway to the corner furthest from the others
   let c0=centroid(outer);
   if(target)c0=target;
@@ -197,15 +232,23 @@ function suggest(P,R,maxCores=10){
     let cores=[first];
     const worst=cs=>{const t=travel(P,R,cs,pts);return t?t.worst:0};
     for(let k=1;k<maxCores&&worst(cores)>0.05;k++){
-      const t=travel(P,R,cores,pts);
+      const t=travel(P,R,cores,pts),w0=t.worst;
       const p=place(P,R,{...first,id:"c"+(k+1)},cores,t.p);if(!p)break;
-      cores=recentre(P,R,[...cores,p],pts);
+      const next=recentre(P,R,[...cores,p],pts);
+      // keep a new core only if it brings the furthest door meaningfully closer
+      if(worst(next)>w0-0.5)break;
+      cores=next;
     }
     return cores;
   };
   // try the smallest few types plus every two-stair core; keep the least total core area that passes
   const pass=cs=>{const t=travel(P,R,cs,pts);return !t||t.worst<0.05};
   const total=cs=>cs.reduce((m,c)=>m+geom(c).area,0)+(pass(cs)?0:1e6)+cs.length*5;
+  // default (user): the split core, 2 lifts (L21), or its 3-lift version where one core must carry more lifts
+  const dflt=P.coreRules.core||"L21";
+  if(byId(dflt)){const cs=cover({core:dflt,variant:null});
+    if(cs&&cs.length){const per=Math.ceil(n.lifts/cs.length),big=dflt==="L21"&&per>2&&byId("L22")?cover({core:"L22",variant:null}):null;
+      return (big&&big.length?big:cs).map((c,i)=>({...c,id:"c"+(i+1)}))}}
   let best=null;
   for(let k=1,round=0;round<3;round++){
     const opts=pick(k),types=[...opts.slice(0,3),...opts.filter(o=>spec(o).stair==="two separate")];

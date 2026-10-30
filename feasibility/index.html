@@ -132,6 +132,10 @@
           <div class="fld" style="flex:2 1 200px"><label class="cap" for="massMode">Apartment floor massing</label><select id="massMode"></select></div>
           <div class="fld"><label class="cap" for="massGap">Space between wings m</label><input id="massGap" type="number" step="0.5" min="3"></div>
         </div>
+        <div class="row">
+          <div class="fld"><label class="cap" for="massTowers">Towers</label><select id="massTowers"></select></div>
+          <div class="fld" style="flex:2 1 180px"><label class="cap" for="massPodium">Podium</label><select id="massPodium"></select></div>
+        </div>
         <p class="hint" id="massMsg"></p>
         <p class="hint">Each group's floorplate is the envelope at its top floor. Apartment floors are then cut to wings one apartment + corridor + apartment deep (the depth and corridor are set in step 6), as in built schemes, rather than filling the envelope. Apartment numbers are a rough count (net area ÷ average size) until the apartment layout step.</p>
       </section>

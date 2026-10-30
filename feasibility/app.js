@@ -157,6 +157,8 @@ function renderControls(){
   $("#preset").innerHTML=Object.entries(R.PRESETS).map(([k,p])=>`<option value="${k}"${c.preset===k?" selected":""}>${p.label}</option>`).join("")+`<option value="custom"${c.preset==="custom"?" selected":""}>Custom</option>`;
   $("#aptSize").value=P.aptSize;$("#effApt").value=P.effApt;
   $("#massMode").innerHTML=Object.entries(window.MASS.MODES).map(([k,v])=>`<option value="${k}"${P.mass.mode===k?" selected":""}>${esc(v)}</option>`).join("");$("#massGap").value=P.mass.gap;
+  $("#massTowers").innerHTML=Object.entries(window.MASS.TOWERS).map(([k,v])=>`<option value="${k}"${String(P.mass.towers)===k?" selected":""}>${esc(v)}</option>`).join("");
+  $("#massPodium").innerHTML=Object.entries(window.MASS.PODIUMS).map(([k,v])=>`<option value="${k}"${P.mass.podium===k?" selected":""}>${esc(v)}</option>`).join("");
   renderBands();
 }
 function renderBands(){
@@ -547,6 +549,7 @@ function aptChecks(){
   if(offb.length)out.push(["warn",`${offb.length} apartment${offb.length>1?"s fall":" falls"} between the brief's size ranges (${offb.map(u=>`${u.type} ${fmt(u.area)} m²`).slice(0,4).join(", ")}). Move a wall or widen the ranges.`]);
   if(c.Oversize)out.push(["warn",`${c.Oversize} apartment${c.Oversize>1?"s are":" is"} bigger than any type in the brief (corner or leftover strip). Split ${c.Oversize>1?"them":"it"} or add a bigger type.`]);
   if(L.left.length)out.push(["info",`${L.left.length} piece${L.left.length>1?"s":""} of facade strip (${fmt(L.left.reduce((m,u)=>m+u.area,0))} m²) too small for an apartment: storage, services or balcony.`]);
+  if(L.hplan)out.push(["info",`${g.name}: deep floor, H plan: the sun-side row splits into apartments on the facade and an inner tier beside the corridor (core with a spur corridor each side, an apartment at each end facing the end facade). Facade apartments reach a spur directly or by their own hallway.`]);
   if(L.deep)out.push(["info",`${g.name}: apartments deepened to ${fmt(L.d,1)} m so the corridor stays ${fmt(P.apt.corridor,1)} m.`]);
   if(L.narrow)out.push(["warn",`The ${g.name} plate is narrower than two apartments and a corridor: apartments cut to ${fmt(L.d,1)} m deep.`]);
   if(L.d>9.05)out.push(["warn",`Apartments ${fmt(L.d,1)} m deep: Clause 58 Standard D27 limits single-aspect habitable rooms to 9 m from a window (open-plan, 2.7 m ceiling).`]);
@@ -818,6 +821,8 @@ function bind(){
   $("#feLim").addEventListener("input",e=>{P.coreRules.feTravel=Math.max(6,parseFloat(e.target.value)||25);schedule()});
   $("#fireMode").addEventListener("change",e=>{P.coreRules.fire=e.target.value;P.cores=[];P.coreAuto=true;renderGrid();schedule()});
   $("#massMode").addEventListener("change",e=>{P.mass.mode=e.target.value;P.cores=[];P.coreAuto=true;P.apt.edits={};schedule()});
+  $("#massTowers").addEventListener("change",e=>{P.mass.towers=e.target.value;P.cores=[];P.coreAuto=true;P.apt.edits={};schedule()});
+  $("#massPodium").addEventListener("change",e=>{P.mass.podium=e.target.value;P.cores=[];P.coreAuto=true;P.apt.edits={};schedule()});
   $("#massGap").addEventListener("input",e=>{P.mass.gap=Math.max(3,parseFloat(e.target.value)||9);P.cores=[];P.coreAuto=true;P.apt.edits={};schedule()});
   bindApts();bindPark();
   const gnum=(id,obj,k,min)=>$(id).addEventListener("input",e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=min){obj()[k]=v;schedule()}});

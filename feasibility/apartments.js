@@ -142,17 +142,19 @@ function cutStrip(R,strip,cuts,d,wall){
 function layoutPlate(P,fp,cores,edits){
   const pcs=piecesOf(fp),rows=[],rest=[];
   for(const pc of pcs){const b=barOf(P,pc);if(b)rows.push(b);else rest.push(...pc)}
-  if(!rows.length)return stripPlate(P,fp,cores,edits);
+  if(!rows.length){const S0=stripPlate(P,fp,cores,edits);S0.stripArea=S0.plate;return S0}
   const R=rowPlate(P,rows,cores),S=rest.length?stripPlate(P,rest,cores,edits):null;
   const plate=shapeArea(fp),units=[...R.units,...(S?S.units:[])],left=[...R.left,...(S?S.left:[])],nsa=units.reduce((m,u)=>m+u.area,0);
   const d0=+P.apt.depth||8,d=Math.max(R.d,S?S.d:0);
   return {d,ban:S?S.ban:d0,narrow:R.d<d0-0.3||!!(S&&S.narrow),deep:R.d>d0+0.05||!!(S&&S.deep),inner:[...R.corridor,...(S?S.inner:[])],corridor:[...R.corridor,...(S?S.corridor:[])],
-    strip:[...R.strip,...(S?S.strip:[])],units,left,cuts:S?S.cuts:[],loops:S?S.loops:[],rows:rows.length,plate,nsa,common:Math.max(0,plate-nsa-left.reduce((m,u)=>m+u.area,0)),eff:nsa/plate};
+    strip:[...R.strip,...(S?S.strip:[])],units,left,cuts:S?S.cuts:[],loops:S?S.loops:[],rows:rows.length,hplan:R.h,stripArea:rest.length?shapeArea(rest):0,plate,nsa,common:Math.max(0,plate-nsa-left.reduce((m,u)=>m+u.area,0)),eff:nsa/plate};
 }
 const piecesOf=sh=>{const hs=sh.filter(r=>area(r)<0);return sh.filter(r=>area(r)>0).map(o=>[o,...hs.filter(h=>window.G.pip(h[0],o))])};
 
 /* A piece is a wing when it has no holes, fills most of its box square to the grid, and is no wider
    than two apartments of the maximum depth plus the corridor. The long side is "along". */
+/* deepest wing the H plan takes: two apartments of the maximum depth, the corridor, and an inner tier */
+const HDEPTH=P=>2*Math.max(+P.apt.depth||8,+P.apt.maxDepth||12)+(+P.apt.corridor||1.6)+8;
 function barOf(P,pc){
   if(pc.length!==1)return null;
   const F=window.GRID.frame(P),q=pc[0].map(p=>F.toG(p));
@@ -167,14 +169,39 @@ function barOf(P,pc){
   const med=arr=>arr.slice().sort((x,y)=>x-y)[Math.floor(arr.length/2)];
   const Wm=med(secs.map(([l,h])=>h-l)),mid0=med(secs.map(([l,h])=>(l+h)/2));
   const c0=Math.min(...secs.map(x=>x[0])),c1=Math.max(...secs.map(x=>x[1]));
-  const cw=+P.apt.corridor||1.6,dMax=Math.max(+P.apt.depth||8,+P.apt.maxDepth||12),d=(Wm-cw)/2;
-  // wing-shaped: longer than wide, typical section within the depth limits, and no section much deeper than the cap
-  if(d<4||d>dMax+0.05||a1-a0<Wm||secs.some(([l,h])=>Math.max(mid0-l,h-mid0)-cw/2>dMax+3))return null;
+  const cw=+P.apt.corridor||1.6,d0=+P.apt.depth||8,dMax=Math.max(d0,+P.apt.maxDepth||12);
   // world point from (along, across)
   const W2=(a,c)=>alongU?F.toW(a,c):F.toW(c,a);
   const rect=(x0,x1,y0,y1)=>{const r=[W2(x0,y0),W2(x1,y0),W2(x1,y1),W2(x0,y1)];return area(r)<0?r.reverse():r};
-  return {pc,alongU,a0,a1,c0,c1,mid:mid0,d,cw,W2,rect,sp:alongU?+P.grid.sx:+P.grid.sy,toA:p=>{const g=F.toG(p);return alongU?g.u:g.v},toAC:p=>{const g=F.toG(p);return alongU?[g.u,g.v]:[g.v,g.u]}};
+  if(a1-a0<Wm)return null;
+  let d=(Wm-cw)/2,mid=mid0,kind="rows",deepHigh=false,ti=0;
+  if(d<4)return null;
+  if(d>dMax+0.3){
+    // Deeper than two apartments and a corridor: H plan (user's sketch). The row away from the sun stays one
+    // apartment deep (the maximum depth); the sun-side row splits into an outer tier on the facade and an inner
+    // tier beside the main corridor, holding the core with a spur corridor each side and an apartment at each end.
+    if(Wm>HDEPTH(P)+0.05)return null;
+    // an L or T (a section much wider than the typical one) isn't one H wing: the massing splits it into wings
+    if(secs.some(([l,h])=>h-l>Wm+7))return null;
+    kind="H";const lo=med(secs.map(x=>x[0])),hi=med(secs.map(x=>x[1])),o=W2(0,0),up=W2(0,1);
+    deepHigh=up.y-o.y>=-1e-9;d=dMax;
+    mid=deepHigh?lo+dMax+cw/2:hi-dMax-cw/2;
+    const R=(hi-lo)-cw-dMax;ti=Math.max(4.5,Math.min(7,R-d0));
+  }else if(secs.some(([l,h])=>Math.max(mid0-l,h-mid0)-cw/2>dMax+3))return null;
+  return {pc,kind,deepHigh,ti,alongU,a0,a1,c0,c1,mid,d,cw,W2,rect,sp:alongU?+P.grid.sx:+P.grid.sy,toA:p=>{const g=F.toG(p);return alongU?g.u:g.v},toAC:p=>{const g=F.toG(p);return alongU?[g.u,g.v]:[g.v,g.u]}};
 }
+/* Where cores go on a floor: they must touch the corridor ("touch"); in an H wing they also sit mostly in
+   the corridor band plus the inner tier on the deep side ("within"), so the spurs can run either side. */
+function coreZones(P,fp){
+  const touch=[],within=[];
+  for(const pc of piecesOf(fp)){const b=barOf(P,pc);
+    if(!b){touch.push(...offsetShape(pc,-depthFor(P,pc).d));continue}
+    const h=b.cw/2,E=1;touch.push(...inter(pc,[b.rect(b.a0-E,b.a1+E,b.mid-h,b.mid+h)]));
+    if(b.kind==="H")within.push(...inter(pc,[b.deepHigh?b.rect(b.a0-E,b.a1+E,b.mid-h,b.mid+h+b.ti):b.rect(b.a0-E,b.a1+E,b.mid-h-b.ti,b.mid+h)]))}
+  return {touch,within};
+}
+/* Each wing's corridor centre line (for placing split cores on it): frame, along range, across position */
+function wingLines(P,fp){return piecesOf(fp).map(pc=>({pc,b:barOf(P,pc)})).map(({pc,b})=>b?{pc,W2:b.W2,a0:b.a0,a1:b.a1,mid:b.mid,alongU:b.alongU,sp:b.sp,kind:b.kind}:{pc,none:true})}
 /* A unit's type from its area (shared by both methods) */
 function typeOf(a,types){
   const live=types.filter(t=>t.mix>0),pool=live.length?live:types,near=(xs)=>xs.slice().sort((x,y)=>Math.abs(a-x.target)-Math.abs(a-y.target))[0];
@@ -195,28 +222,73 @@ function typeOf(a,types){
 function rowPlate(P,bars,cores){
   // party walls are lines at feasibility level: areas are measured to them
   const A=P.apt,coreShapes=cores.map(c=>c.outline);
+  // the corridor runs through a split core's lobby gap: only its stair and lift blocks interrupt it
+  const coreSolid=cores.flatMap(c=>(c.parts||[]).filter(p=>p.t!=="gap").map(p=>p.poly)),corCut=coreSolid.length?coreSolid:coreShapes;
   const types=productTypes(P);
   const want={},tot=types.reduce((m,t)=>m+(+t.mix||0),0)||1;for(const t of types)want[t.name]=(+t.mix||0)/tot;
   const live=types.filter(t=>t.mix>0||types.every(u=>!u.mix)),maxB=Math.max(...live.map(t=>t.bays));
-  const rows=[],corridor=[];
+  const rows=[],corridor=[],Hs=[],d0=+A.depth||8,HW=1.2;
   for(const b of bars){
     const mid=b.mid,h=b.cw/2,E=1,hb=b.sp/2;
-    let cor=inter([b.pc[0]],[b.rect(b.a0-E,b.a1+E,mid-h,mid+h)]);if(coreShapes.length)cor=diff(cor,coreShapes);corridor.push(...cor);
-    for(const [y0,y1,dy] of [[b.c0-E,mid-h,mid-h],[mid+h,b.c1+E,mid+h]]){
-      const full=inter([b.pc[0]],[b.rect(b.a0-E,b.a1+E,y0,y1)]);let sh=full;if(coreShapes.length)sh=diff(sh,coreShapes);if(shapeArea(sh)<1)continue;
+    let cor=inter([b.pc[0]],[b.rect(b.a0-E,b.a1+E,mid-h,mid+h)]);if(corCut.length)cor=diff(cor,corCut);corridor.push(...cor);
+    // H plan: on the deep side, an inner tier beside the corridor (core, a spur corridor each side of it,
+    // an apartment at each end facing the end facade) and an outer tier of apartments on the facade
+    let H=null;
+    if(b.kind==="H"){
+      const sgn=b.deepHigh?1:-1,cK=mid+sgn*h;
+      const cs=coreShapes.map(c=>{const ac=c.map(b.toAC),as=ac.map(p=>p[0]),cc=ac.map(p=>p[1]);
+        return {lo:Math.min(...as),hi:Math.max(...as),far:sgn>0?Math.max(...cc):Math.min(...cc),near:sgn>0?Math.min(...cc):Math.max(...cc)}})
+        .filter(c=>c.hi>b.a0+0.5&&c.lo<b.a1-0.5&&(sgn>0?c.far>cK+0.3&&c.near<cK+b.ti:c.far<cK-0.3&&c.near>cK-b.ti));
+      // the tier boundary: the inner tier depth, or further if a core reaches deeper (spurs run the core's full depth)
+      let din=b.ti;for(const c of cs)din=Math.max(din,Math.abs(c.far-cK));
+      const cB=cK+sgn*din,yIn=[Math.min(cK,cB),Math.max(cK,cB)];
+      let spurs=[];
+      if(cs.length)for(const c of cs)spurs.push([Math.max(b.a0,c.lo-b.cw),c.lo],[c.hi,Math.min(b.a1,c.hi+b.cw)]);
+      else{const am=Math.round((b.a0+b.a1)/2/hb)*hb;spurs.push([am-h,am+h])}
+      spurs=spurs.filter(([x0,x1])=>x1-x0>0.3).sort((p,q)=>p[0]-q[0]);
+      const spurSh=spurs.flatMap(([x0,x1])=>{let r=inter([b.pc[0]],[b.rect(x0,x1,yIn[0],yIn[1])]);if(coreShapes.length)r=diff(r,coreShapes);return r});
+      corridor.push(...spurSh);
+      // inner tier: what's left after the core and spurs; pieces at the wing ends are apartments (up to
+      // 1.5 bays from the end facade), the rest is storage / services
+      // between the spurs, the strip from the core's far face to the tier boundary goes to the apartment above
+      const extra=cs.flatMap(c=>Math.abs(cB-c.far)<0.3?[]:inter([b.pc[0]],[b.rect(c.lo,c.hi,Math.min(c.far,cB),Math.max(c.far,cB))]));
+      let inner=inter([b.pc[0]],[b.rect(b.a0-E,b.a1+E,yIn[0],yIn[1])]);if(coreShapes.length)inner=diff(inner,coreShapes);if(spurSh.length)inner=diff(inner,spurSh);if(extra.length)inner=diff(inner,extra);
+      const units=[],left=[],cap=1.5*b.sp;
+      // the wing's ends at the inner tier's depth (a skewed end is further in than the wing's overall end)
+      const allA=inner.flatMap(r=>r.map(b.toA)),inLo=allA.length?Math.min(...allA):b.a0,inHi=allA.length?Math.max(...allA):b.a1;
+      for(const pc of piecesOf(inner)){const as=pc[0].map(b.toA),lo=Math.min(...as),hi=Math.max(...as);
+        const atLo=lo<inLo+0.5,atHi=hi>inHi-0.5;
+        if(!atLo&&!atHi){left.push(pc);continue}
+        // cap the depth from the end window; the part beyond is storage
+        const cut=atLo?Math.min(hi,Math.floor((lo+cap)/hb)*hb):Math.max(lo,Math.ceil((hi-cap)/hb)*hb);
+        const u=inter(pc,[atLo?b.rect(b.a0-E,cut,yIn[0]-E,yIn[1]+E):b.rect(cut,b.a1+E,yIn[0]-E,yIn[1]+E)]),rest=diff(pc,[atLo?b.rect(b.a0-E,cut,yIn[0]-E,yIn[1]+E):b.rect(cut,b.a1+E,yIn[0]-E,yIn[1]+E)]);
+        if(shapeArea(rest)>1)left.push(rest);
+        if(shapeArea(u)>1)units.push({sh:u,xm:atLo?(lo+cut)/2:(cut+hi)/2,lo:atLo})}
+      H={b,sgn,cK,cB,yIn,spurs,units,left,legs:[],extra};Hs.push(H);
+    }
+    for(const [y0,y1,dy,side] of [[b.c0-E,mid-h,mid-h,-1],[mid+h,b.c1+E,mid+h,1]]){
+      // in an H wing the deep side's row is the outer tier, from the tier boundary to the facade
+      const outer=H&&side===H.sgn,ya=outer&&side>0?H.cB:y0,yb=outer&&side<0?H.cB:y1,door=outer?H.cB:dy;
+      const full=inter([b.pc[0]],[b.rect(b.a0-E,b.a1+E,ya,yb)]);let sh=full;if(coreShapes.length)sh=diff(sh,coreShapes);
+      if(outer&&H.extra.length)sh=union(sh,H.extra);if(shapeArea(sh)<1)continue;
+      // the outer tier's apartments may reach down over the core (see extra): cut slabs from the corridor edge
+      const sy0=outer&&side>0?H.cK:ya,sy1=outer&&side<0?H.cK:yb;
       // wall positions: grid and mid-bay lines and the row ends
       const xs=new Set([b.a0,b.a1]);
       for(let k=Math.ceil(b.a0/hb);k*hb<b.a1;k++){const x=+(k*hb).toFixed(3);if(x>b.a0+0.3&&x<b.a1-0.3)xs.add(x)}
       // no walls at core faces: walls follow the grid, and a unit beside a core just loses the area the core takes
       const X=[...xs].sort((p,q)=>p-q);
-      // a stretch is blocked where a core takes most of the row there
       const ringsAC=sh2=>sh2.map(r=>r.map(b.toAC)),Rs=ringsAC(sh),Rf=ringsAC(full);
       const secLen=(R,x)=>{let L=0;for(const r of R){const cs=[];for(let i=0;i<r.length;i++){const [pa,pc2]=r[i],[qa,qc]=r[(i+1)%r.length];if((pa-x)*(qa-x)<0)cs.push(pc2+(qc-pc2)*(x-pa)/(qa-pa))}cs.sort((u,v)=>u-v);for(let i=0;i+1<cs.length;i+=2)L+=cs[i+1]-cs[i]}return L};
       // blocked only where a core takes nearly the full depth of the row; otherwise the apartment there is notched round the core
       const blocked=X.slice(1).map((x,i)=>{const xm=(X[i]+x)/2;return secLen(Rs,xm)<0.2*secLen(Rf,xm)});
       // which way the row's facade faces: +1 north (the sun side here), -1 south
-      const o=b.W2(0,0),q=b.W2(0,y0<mid?-1:1),sun=q.y-o.y;
-      rows.push({b,sh,X,blocked,sun,door:dy,y0,y1});
+      const o=b.W2(0,0),q=b.W2(0,side),sun=q.y-o.y;
+      // outer tier: every apartment reaches a spur, directly or (an end apartment) by its own hallway
+      let access=null;
+      if(outer){const sp=H.spurs,ov=(x0,x1)=>sp.some(([s0,s1])=>x0<s1-0.05&&x1>s0+0.05);
+        access=(x0,x1,first,last)=>ov(x0,x1)||(first&&x1<=sp[0][0]+1e-6)||(last&&x0>=sp[sp.length-1][1]-1e-6)}
+      rows.push({b,sh,X,blocked,sun,door,y0:sy0,y1:sy1,H:outer?H:null,access});
     }
   }
   // Every way to cut a row, by how many units of each type it makes (the cheapest cut for each count),
@@ -238,15 +310,21 @@ function rowPlate(P,bars,cores){
         // beside a core: may stay empty
         if(bl&&j===i+1){add(j,i,fk,st.cnt,st.cost+0.2,null);continue}
         if(bl)break;
-        live.forEach((t,ti)=>{const off=Math.abs(nb-t.bays);if(off>0.45)return;const c=st.cnt.slice();c[ti]++;add(j,i,fk,c,st.cost+off*off*6+aspect(r,t,i===0||j===m),t.name)});
+        const ok=!r.access||r.access(r.X[i],r.X[j],i===0,j===m);
+        if(ok)live.forEach((t,ti)=>{const off=Math.abs(nb-t.bays);if(off>0.45)return;const c=st.cnt.slice();c[ti]++;add(j,i,fk,c,st.cost+off*off*6+aspect(r,t,i===0||j===m),t.name)});
         // longer than the biggest type: only if the row can't be divided
-        if(nb>maxB+0.45){const c=st.cnt.slice();c[NT-1]++;add(j,i,fk,c,st.cost+30+nb,"?");break}
+        if(nb>maxB+0.45){if(ok){const c=st.cnt.slice();c[NT-1]++;add(j,i,fk,c,st.cost+30+nb,"?")}break}
       }}
     return [...S[m].entries()].map(([k,st])=>{const cuts=[m],types=[];let j=m,key=k;
       while(j>0){const p=S[j].get(key).prev;types.push(p[2]);j=p[0];key=p[1];cuts.push(j)}
       return {cnt:st.cnt,cost:st.cost,cuts:cuts.reverse(),types:types.reverse()}});
   };
-  let acc=new Map([["",{cnt:new Array(NT).fill(0),cost:0,picks:[]}]]);
+  // H inner-tier apartments are fixed by the core and spurs: typed by their area in bays (bay x apartment depth)
+  const cnt0=new Array(NT).fill(0);
+  for(const H of Hs)for(const u of H.units){const eq=shapeArea(u.sh)/(H.b.sp*d0);
+    const ti=live.reduce((bi,t,i)=>Math.abs(eq-t.bays)<Math.abs(eq-live[bi].bays)?i:bi,0);
+    u.type=eq<0.4?null:eq>maxB+0.45?"?":live[ti].name;if(u.type)cnt0[u.type==="?"?NT-1:ti]++}
+  let acc=new Map([["",{cnt:cnt0,cost:0,picks:[]}]]);
   for(const r of rows){let opts=rowOptions(r);const next=new Map();
     // a row that can't be cut into types (a stub, or cores in the way): one piece, typed by nearest bay count
     if(!opts.length){const m=r.X.length-1,nb=(r.X[m]-r.X[0])/r.b.sp,ti=live.reduce((bi,t,i)=>Math.abs(nb-t.bays)<Math.abs(nb-live[bi].bays)?i:bi,0),cnt=new Array(NT).fill(0),ty=nb<0.4?null:nb>maxB+0.45?"?":live[ti].name;
@@ -262,13 +340,28 @@ function rowPlate(P,bars,cores){
   rows.forEach((r,ri)=>{strip.push(...r.sh);const s=best.sol[ri];
     for(let k=0;k+1<s.cuts.length;k++){
       const x0=r.X[s.cuts[k]],x1=r.X[s.cuts[k+1]],ty=s.types[k];
-      const pcs=piecesOf(inter(r.sh,[r.b.rect(x0,x1,r.y0-1,r.y1+1)]));
-      for(const pc of pcs){const a=shapeArea(pc);if(a<1)continue;
+      // outer tier of an H wing: the door is on a spur, or at the end of the apartment's own hallway (dog-leg)
+      let door=null,leg=null;
+      if(r.H){const H=r.H,sp=H.spurs,hit=sp.find(([s0,s1])=>x0<s1-0.05&&x1>s0+0.05);
+        if(hit)door=r.b.W2(Math.max(hit[0],Math.min(hit[1],(x0+x1)/2)),H.cB);
+        else{const toLo=x1<=sp[0][0]+1e-6,a=toLo?x1:sp[sp.length-1][1],z=toLo?sp[0][0]:x0,yl=[Math.min(H.cB,H.cB-H.sgn*HW),Math.max(H.cB,H.cB-H.sgn*HW)];
+          if(z-a>0.05){leg=inter([r.b.pc[0]],[r.b.rect(a,z,yl[0],yl[1])]);H.legs.push(...leg)}
+          door=r.b.W2(toLo?sp[0][0]:sp[sp.length-1][1],H.cB-H.sgn*HW/2)}}
+      let shp=inter(r.sh,[r.b.rect(x0,x1,r.y0-1,r.y1+1)]);if(leg&&leg.length)shp=union(shp,leg);
+      for(const pc of piecesOf(shp)){const a=shapeArea(pc);if(a<1)continue;
         if(!ty||a<12){left.push({poly:pc[0],rings:pc,area:a});continue}
         const xm=Math.max(x0,Math.min(x1,(x0+x1)/2));
-        units.push({poly:pc[0],rings:pc,area:a,type:ty==="?"?"Oversize":ty,ok:ty!=="?",door:r.b.W2(xm,r.door),width:x1-x0})}
+        units.push({poly:pc[0],rings:pc,area:a,type:ty==="?"?"Oversize":ty,ok:ty!=="?",door:door||r.b.W2(xm,r.door),width:x1-x0})}
     }});
-  return {d:Math.max(...bars.map(b=>b.d)),units,left,strip,corridor};
+  // H inner-tier apartments (less any hallway an outer apartment takes past them) and the storage behind
+  for(const H of Hs){
+    for(const u of H.units){let sh=H.legs.length?diff(u.sh,H.legs):u.sh;strip.push(...sh);
+      for(const pc of piecesOf(sh)){const a=shapeArea(pc);if(a<1)continue;
+        if(!u.type||a<12){left.push({poly:pc[0],rings:pc,area:a});continue}
+        units.push({poly:pc[0],rings:pc,area:a,type:u.type==="?"?"Oversize":u.type,ok:u.type!=="?",door:H.b.W2(u.xm,H.cK),width:a/Math.max(1,H.yIn[1]-H.yIn[0])})}}
+    for(const pc of H.left){const a=shapeArea(pc);if(a>=1)left.push({poly:pc[0],rings:pc,area:a})}
+  }
+  return {d:Math.max(...bars.map(b=>b.d)),units,left,strip,corridor,h:Hs.length};
 }
 
 /* the facade-strip method, for pieces that aren't wings */
@@ -357,5 +450,5 @@ function splitAt(L,ring,s){
   let a=cs[cs.length-1]-P,b=cs[0];for(let i=0;i<cs.length;i++){if(cs[i]>s){b=cs[i];a=i?cs[i-1]:cs[cs.length-1]-P;break}if(i===cs.length-1){a=cs[i];b=cs[0]+P}}
   return clampCut(lp,(a+b)/2,L.ban||L.d);
 }
-window.APTS={productTypes,baysOf,depthFor,clampCut,splitAt,defaults,layoutPlate,counts,mixText,project,pointAt,maxInset};
+window.APTS={wingLines,coreZones,barOf,HDEPTH,productTypes,baysOf,depthFor,clampCut,splitAt,defaults,layoutPlate,counts,mixText,project,pointAt,maxInset};
 })();
