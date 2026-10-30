@@ -128,16 +128,22 @@
           <div class="fld"><label class="cap" for="aptSize">Average apartment m²</label><input id="aptSize" type="number" step="1" min="30"></div>
           <div class="fld"><label class="cap" for="effApt">Apartment efficiency %</label><input id="effApt" type="number" step="1" min="40" max="100"></div>
         </div>
-        <div class="row">
-          <div class="fld" style="flex:2 1 200px"><label class="cap" for="massMode">Apartment floor massing</label><select id="massMode"></select></div>
-          <div class="fld"><label class="cap" for="massGap">Space between wings m</label><input id="massGap" type="number" step="0.5" min="3"></div>
-        </div>
+        <p class="hint">Each group's floorplate is the envelope at its top floor; the building form below cuts the apartment floors to wings. Apartment numbers are a rough count (net area ÷ average size) until the apartment layout step.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="h-form">
+        <h2 id="h-form">Building form <span id="formState"></span></h2>
         <div class="row">
           <div class="fld"><label class="cap" for="massTowers">Towers</label><select id="massTowers"></select></div>
           <div class="fld" style="flex:2 1 180px"><label class="cap" for="massPodium">Podium</label><select id="massPodium"></select></div>
         </div>
+        <div class="row">
+          <div class="fld" style="flex:2 1 200px"><label class="cap" for="massPlan">Corridor</label><select id="massPlan"></select></div>
+          <div class="fld"><label class="cap" for="massGap">Space between towers m</label><input id="massGap" type="number" step="0.5" min="3"></div>
+        </div>
+        <div class="fld"><label class="cap" for="massMode">Floor shape</label><select id="massMode"></select></div>
         <p class="hint" id="massMsg"></p>
-        <p class="hint">Each group's floorplate is the envelope at its top floor. Apartment floors are then cut to wings one apartment + corridor + apartment deep (the depth and corridor are set in step 6), as in built schemes, rather than filling the envelope. Apartment numbers are a rough count (net area ÷ average size) until the apartment layout step.</p>
+        <p class="hint">Apartment floors are cut to wings: apartment + corridor + apartment. Deeper floors (about 20 m or more) can take the H corridor: the sun-side row splits into apartments on the facade and an inner tier with the core, a spur corridor each side of it and an apartment at each end. Auto picks by laying the options out.</p>
       </section>
 
       <section class="panel" aria-labelledby="h-core">

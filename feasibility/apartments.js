@@ -176,17 +176,21 @@ function barOf(P,pc){
   if(a1-a0<Wm)return null;
   let d=(Wm-cw)/2,mid=mid0,kind="rows",deepHigh=false,ti=0;
   if(d<4)return null;
-  if(d>dMax+0.3){
-    // Deeper than two apartments and a corridor: H plan (user's sketch). The row away from the sun stays one
-    // apartment deep (the maximum depth); the sun-side row splits into an outer tier on the facade and an inner
-    // tier beside the main corridor, holding the core with a spur corridor each side and an apartment at each end.
-    if(Wm>HDEPTH(P)+0.05)return null;
-    // an L or T (a section much wider than the typical one) isn't one H wing: the massing splits it into wings
-    if(secs.some(([l,h])=>h-l>Wm+7))return null;
+  // Corridor plan (Building form): auto takes the H when the floor is deeper than two apartments and a corridor;
+  // "h" takes it on any floor deep enough for an outer tier (6 m) and an inner tier (4.5 m) beside one row;
+  // "straight" never.
+  const plan=(P.mass&&P.mass.plan)||"auto",canH=Wm-cw-d0>=10.5-1e-6&&Wm<=HDEPTH(P)+0.05&&!secs.some(([l,h])=>h-l>Wm+7);
+  if(plan==="straight"&&d>dMax+0.3)return null;
+  if(plan!=="straight"&&(d>dMax+0.3||(plan==="h"&&canH))){
+    // H plan (user's sketch). The row away from the sun stays one apartment deep (up to the maximum depth); the
+    // sun-side row splits into an outer tier on the facade and an inner tier beside the main corridor, holding the
+    // core with a spur corridor each side and an apartment at each end. An L or T isn't one H wing.
+    if(!canH)return null;
     kind="H";const lo=med(secs.map(x=>x[0])),hi=med(secs.map(x=>x[1])),o=W2(0,0),up=W2(0,1);
-    deepHigh=up.y-o.y>=-1e-9;d=dMax;
-    mid=deepHigh?lo+dMax+cw/2:hi-dMax-cw/2;
-    const R=(hi-lo)-cw-dMax;ti=Math.max(4.5,Math.min(7,R-d0));
+    const dS=Math.min(dMax,Wm-cw-10.5);
+    deepHigh=up.y-o.y>=-1e-9;d=dS;
+    mid=deepHigh?lo+dS+cw/2:hi-dS-cw/2;
+    const R=(hi-lo)-cw-dS;ti=Math.max(4.5,Math.min(7,R-d0));
   }else if(secs.some(([l,h])=>Math.max(mid0-l,h-mid0)-cw/2>dMax+3))return null;
   return {pc,kind,deepHigh,ti,alongU,a0,a1,c0,c1,mid,d,cw,W2,rect,sp:alongU?+P.grid.sx:+P.grid.sy,toA:p=>{const g=F.toG(p);return alongU?g.u:g.v},toAC:p=>{const g=F.toG(p);return alongU?[g.u,g.v]:[g.v,g.u]}};
 }

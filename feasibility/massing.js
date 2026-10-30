@@ -11,9 +11,10 @@
 const {area,bbox,diff,inter,shapeArea,offsetShape}=window.G;
 const CORE=45;   // m² of floor a core takes (lifts, stair, lobby), for scoring only
 
-function defaults(){return {mode:"auto",gap:9,towers:"auto",podium:"shared"}}
-const TOWERS={auto:"Auto (best value)",1:"1 tower",2:"2 towers",3:"3 towers",4:"4 towers"};
-const PODIUMS={shared:"Shared by the towers",separate:"Separate under each tower"};
+function defaults(){return {mode:"auto",gap:9,towers:"auto",podium:"shared",plan:"auto"}}
+const PLANS={auto:"Auto",straight:"Straight",h:"H (deep floors)"};
+const TOWERS={auto:"Auto",1:"1 tower",2:"2 towers",3:"3 towers",4:"4 towers"};
+const PODIUMS={shared:"Shared",separate:"Separate per tower"};
 const MODES={auto:"Best of the options",bars:"Double-loaded bars",court:"Courtyard (wings round the edge)",fill:"Fill the envelope"};
 function depths(P){const d=+(P.apt&&P.apt.depth)||8,cw=+(P.apt&&P.apt.corridor)||1.6;return {d,cw,D:2*d+cw}}
 const outers=sh=>sh.filter(r=>area(r)>0);
@@ -95,7 +96,7 @@ const cache=new Map();
 function choose(P,ref){
   const mode=P.mass.mode||"auto",{d,cw}=depths(P);
   const want=P.mass.towers==null||P.mass.towers==="auto"?0:+P.mass.towers;
-  const key=JSON.stringify([mode,want,d,cw,P.apt&&P.apt.maxDepth,P.mass.gap,P.grid.angle,P.site.front,ref.map(r=>r.map(p=>[+p.x.toFixed(2),+p.y.toFixed(2)]))]);
+  const key=JSON.stringify([mode,want,P.mass.plan,d,cw,P.apt&&P.apt.maxDepth,P.mass.gap,P.grid.angle,P.site.front,ref.map(r=>r.map(p=>[+p.x.toFixed(2),+p.y.toFixed(2)]))]);
   if(cache.has(key))return cache.get(key);
   const fill={kind:"fill",shape:ref,score:score(P,ref),n:outers(ref).length};
   let opts=[fill];
@@ -163,5 +164,5 @@ function describe(P,ch){
   return tw+`Wings ${D.toFixed(1)} m deep round a courtyard at least ${(+P.mass.gap).toFixed(1)} m across.`+why;
 }
 
-window.MASS={applyShared,TOWERS,PODIUMS,defaults,MODES,depths,choose,apply,describe,score};
+window.MASS={PLANS,applyShared,TOWERS,PODIUMS,defaults,MODES,depths,choose,apply,describe,score};
 })();
