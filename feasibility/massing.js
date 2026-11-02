@@ -12,7 +12,7 @@ const {area,bbox,diff,inter,shapeArea,offsetShape}=window.G;
 const CORE=74;   // m² of floor a core takes (the default split core, 2 lifts + scissor stair + lobby), for scoring only
 
 function defaults(){return {mode:"auto",gap:9,towers:"auto",podium:"shared",plan:"auto",corridors:[]}}
-const PLANS={auto:"Auto",straight:"Straight",h:"H (deep floors)",drawn:"Drawn on the plan"};
+const PLANS={auto:"Auto",straight:"Straight",h:"H (deep floors)"};
 const TOWERS={auto:"Auto",1:"1 tower",2:"2 towers",3:"3 towers",4:"4 towers"};
 const PODIUMS={shared:"Shared",separate:"Separate per tower"};
 const MODES={auto:"Best of the options",bars:"Double-loaded bars",court:"Courtyard (wings round the edge)",fill:"Fill the envelope"};

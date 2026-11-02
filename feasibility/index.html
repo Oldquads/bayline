@@ -10,7 +10,7 @@
 <script src="https://cdn.jsdelivr.net/npm/clipper-lib@6.4.2/clipper.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20261102d">
 </head>
 <body>
 <div class="wrap">
@@ -137,19 +137,17 @@
           <div class="fld"><label class="cap" for="massTowers">Towers</label><select id="massTowers"></select></div>
           <div class="fld" style="flex:2 1 180px"><label class="cap" for="massPodium">Podium</label><select id="massPodium"></select></div>
         </div>
-        <div class="row">
-          <div class="fld" style="flex:2 1 200px"><label class="cap" for="massPlan">Corridor</label><select id="massPlan"></select></div>
-          <div class="fld"><label class="cap" for="massGap">Space between towers m</label><input id="massGap" type="number" step="0.5" min="3"></div>
-        </div>
+        <div class="fld"><label class="cap" for="massGap">Space between towers m</label><input id="massGap" type="number" step="0.5" min="3"></div>
+        <div class="cap">Corridor</div>
         <div class="row" id="drawRow">
           <button class="btn go" id="corDraw" type="button">Draw corridor</button>
           <button class="btn" id="corUndo" type="button">Undo last line</button>
           <button class="btn" id="corClear" type="button">Clear</button>
         </div>
-        <p class="hint" id="drawHint">On the plan, click points along the corridor's centre line (they snap to grid and mid-bay lines, square to the grid); double-click to finish a line. Draw more lines for an H, L, T or cross. Esc cancels.</p>
+        <p class="hint" id="drawHint">Draw your own corridor: click <b>Draw corridor</b>, click points on the plan, double-click to end a line. Draw more lines for any shape. With no corridor drawn, the planner works one out itself; <b>Clear</b> goes back to that.</p>
         <div class="fld"><label class="cap" for="massMode">Floor shape</label><select id="massMode"></select></div>
         <p class="hint" id="massMsg"></p>
-        <p class="hint">Apartment floors are cut to wings: apartment + corridor + apartment. Deeper floors (about 20 m or more) can take the H corridor: the sun-side row splits into apartments on the facade and an inner tier with the core, a spur corridor each side of it and an apartment at each end. Auto picks by laying the options out.</p>
+        <p class="hint">Without a drawn corridor, apartment floors are cut to wings (apartment + corridor + apartment); deeper floors get an H. Auto picks by laying the options out.</p>
       </section>
 
       <section class="panel" aria-labelledby="h-core">
@@ -256,6 +254,8 @@
                 <button class="btn" id="v3d" type="button" aria-pressed="false">3D</button>
               </div>
               <button class="btn" id="rot" type="button" title="Rotate the 3D view" hidden>Rotate</button>
+              <button class="btn" id="corDraw2" type="button" title="Draw the corridor on the plan">Draw corridor</button>
+              <button class="btn" id="corUndo2" type="button" hidden>Undo</button>
               <button class="btn" id="csvBtn" type="button">Save area schedule</button>
             </div>
           </div>
@@ -272,16 +272,16 @@
     </main>
   </div>
 </div>
-<script src="../lib/geom.js"></script>
-<script src="../lib/vicmap.js"></script>
-<script src="rules.js"></script>
-<script src="massing.js"></script>
-<script src="envelope.js"></script>
-<script src="grid.js"></script>
-<script src="cores.js"></script>
-<script src="apartments.js"></script>
-<script src="../lib/carpark.js"></script>
-<script src="parking.js"></script>
-<script src="app.js"></script>
+<script src="../lib/geom.js?v=20261102d"></script>
+<script src="../lib/vicmap.js?v=20261102d"></script>
+<script src="rules.js?v=20261102d"></script>
+<script src="massing.js?v=20261102d"></script>
+<script src="envelope.js?v=20261102d"></script>
+<script src="grid.js?v=20261102d"></script>
+<script src="cores.js?v=20261102d"></script>
+<script src="apartments.js?v=20261102d"></script>
+<script src="../lib/carpark.js?v=20261102d"></script>
+<script src="parking.js?v=20261102d"></script>
+<script src="app.js?v=20261102d"></script>
 </body>
 </html>

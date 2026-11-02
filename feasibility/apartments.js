@@ -158,7 +158,7 @@ const piecesOf=sh=>{const hs=sh.filter(r=>area(r)<0);return sh.filter(r=>area(r)
    The user draws the corridor's centre line (runs square to the grid). The floor is the envelope within one
    apartment depth of the corridor's edge; each part of it belongs to the nearest run, and each run is cut
    into apartments on grid and mid-bay lines like any wing. */
-function drawnOn(P){return P.mass&&P.mass.plan==="drawn"&&corridorRuns(P).length>0}
+function drawnOn(P){return !!(P.mass&&P.mass.corridors&&P.mass.corridors.length)&&corridorRuns(P).length>0}
 function corridorRuns(P){
   const F=window.GRID.frame(P),out=[];
   for(const line of (P.mass&&P.mass.corridors)||[])for(let i=0;i+1<line.length;i++){

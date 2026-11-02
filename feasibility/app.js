@@ -29,7 +29,7 @@ function ensure(o){
   o.grid={sx:8.4,sy:8.4,angle:null,ox:0,oy:0,col:0.6,snap:true,centre:"auto",...(o.grid||{})};
   o.park={...PK.defaults(),...(o.park||{})};if(!o.park.rates||!o.park.rates.A)o.park.rates=PK.defaults().rates;
   o.coreRules={aptsPerLift:60,aptDepth:8,travel:6,exitsApart:45,fire:"fe",feTravel:25,...(o.coreRules||{})};
-  o.mass={...window.MASS.defaults(),...(o.mass||{})};
+  o.mass={...window.MASS.defaults(),...(o.mass||{})};o.mass.plan="auto";
   o.coreView={cat:"all",suit:true,...(o.coreView||{})};
   o.apt={...AP.defaults(),...(o.apt||{})};if(!o.apt._g2){o.apt.snap="prefer";o.apt._g2=1}delete o.apt.wall;if(!o.apt._m2){o.apt.maxDepth=9;o.apt._m=o.apt._m2=1}for(const t of o.apt.types){if(t.beds==null)t.beds=PK.bedsOf(t);if(t.bays==null)t.bays=AP.baysOf(t)}if(o.coreRules.aptDepth&&!(o.apt&&o.apt._d)){o.apt.depth=o.coreRules.aptDepth;o.apt._d=1}
   return o;
@@ -99,8 +99,7 @@ function recompute(){
   RES.checks.push(...gridChecks());
   $("#massMsg").textContent=RES.mass?window.MASS.describe(P,RES.mass):"";
   {const m=RES.mass,n=m?m.shape.filter(r=>area(r)>0).length:0,T=typLayout();$("#formState").textContent=m?`${n} tower${n>1?"s":""} · ${T&&T.drawn?"drawn corridor":T&&T.hplan?"H corridor":T&&T.rows?"straight corridor":"envelope"}`:""}
-  {const dr=P.mass.plan==="drawn";$("#drawRow").hidden=!dr;$("#drawHint").hidden=!dr;$("#corDraw").textContent=corDrawing?"Finish drawing":"Draw corridor";
-   if(dr&&!(P.mass.corridors||[]).length)RES.checks.push(["warn","Corridor is set to Drawn: click Draw corridor and draw it on the plan. Until then the planner uses its own corridor."])}
+  drawButtons();
   renderSummary();renderStackOut();renderSched();renderCoreNeed();renderGridFit();renderAptOut();draw();save();
 }
 let rT=null;function schedule(){clearTimeout(rT);rT=setTimeout(recompute,60)}
@@ -160,7 +159,6 @@ function renderControls(){
   $("#preset").innerHTML=Object.entries(R.PRESETS).map(([k,p])=>`<option value="${k}"${c.preset===k?" selected":""}>${p.label}</option>`).join("")+`<option value="custom"${c.preset==="custom"?" selected":""}>Custom</option>`;
   $("#aptSize").value=P.aptSize;$("#effApt").value=P.effApt;
   $("#massMode").innerHTML=Object.entries(window.MASS.MODES).map(([k,v])=>`<option value="${k}"${P.mass.mode===k?" selected":""}>${esc(v)}</option>`).join("");$("#massGap").value=P.mass.gap;
-  $("#massPlan").innerHTML=Object.entries(window.MASS.PLANS).map(([k,v])=>`<option value="${k}"${(P.mass.plan||"auto")===k?" selected":""}>${esc(v)}</option>`).join("");
   $("#massTowers").innerHTML=Object.entries(window.MASS.TOWERS).map(([k,v])=>`<option value="${k}"${String(P.mass.towers)===k?" selected":""}>${esc(v)}</option>`).join("");
   $("#massPodium").innerHTML=Object.entries(window.MASS.PODIUMS).map(([k,v])=>`<option value="${k}"${P.mass.podium===k?" selected":""}>${esc(v)}</option>`).join("");
   renderBands();
@@ -307,10 +305,14 @@ function drawPlan(){
   drawGrid(g,T,c);
   drawUnits(g,T,c);
   // drawn corridor centre lines, and the line being drawn
-  if(P.mass.plan==="drawn"||corDrawing){g.save();g.lineWidth=2;g.strokeStyle=c.accent;g.setLineDash([7,4]);
+  if((P.mass.corridors||[]).length||corDrawing){g.save();g.lineWidth=2;g.strokeStyle=c.accent;g.setLineDash([7,4]);
     for(const line of [...(P.mass.corridors||[]),...(corLine.length?[[...corLine,...(corHover?[corHover]:[])]]:[])]){g.beginPath();line.forEach((p,i)=>{const q=T(p);i?g.lineTo(q.x,q.y):g.moveTo(q.x,q.y)});g.stroke();
       g.fillStyle=c.accent;for(const p of line){const q=T(p);g.fillRect(q.x-3,q.y-3,6,6)}}
     g.restore()}
+  if(corDrawing){
+    if(corHover){const q=T(corHover);g.save();g.strokeStyle=c.accent;g.lineWidth=2;g.beginPath();g.arc(q.x,q.y,7,0,Math.PI*2);g.stroke();g.restore()}
+    const msg=corLine.length?"Drawing corridor · click the next point · double-click to finish this line · Esc to stop":"Drawing corridor · click where it starts (points snap to the grid)";
+    g.save();g.font=`600 13px "Barlow",sans-serif`;const w=g.measureText(msg).width+24;g.fillStyle=c.accent;g.fillRect((W-w)/2,10,w,28);g.fillStyle="#1E292D";g.textAlign="center";g.textBaseline="middle";g.fillText(msg,W/2,24);g.restore()}
   const ccol={...c,lift:css("--rule"),stair:c.bg,riser:hexA("#8E959A",0.55),lobby:c.sunk};
   P.cores.forEach((inst,i)=>{const geo=C.geom(inst);if(geo)C.draw(g,T,geo,ccol,i,i===P.coreSel)});
   // boundary, edges by type
@@ -523,6 +525,8 @@ function corSnap(w){const F=GR.frame(P),q=F.toG(w),hx=(+P.grid.sx||8.4)/2,hy=(+P
   // square to the grid: keep the run along u or along v from the last point
   if(corLine.length){const l=F.toG(corLine[corLine.length-1]);if(Math.abs(u-l.u)>=Math.abs(v-l.v))v=l.v;else u=l.u}
   return F.toW(u,v)}
+function drawButtons(){const t=corDrawing?"Finish drawing":"Draw corridor";$("#corDraw").textContent=t;$("#corDraw2").textContent=t;
+  $("#corDraw2").classList.toggle("on",corDrawing);$("#corUndo2").hidden=!corDrawing;cv.classList.toggle("drawing",corDrawing)}
 function corFinish(){const pts=corLine.filter((p,i)=>!i||Math.hypot(p.x-corLine[i-1].x,p.y-corLine[i-1].y)>0.3);corLine=[];corHover=null;
   if(pts.length>=2){P.mass.corridors=[...(P.mass.corridors||[]),pts];P.cores=[];P.coreAuto=true;P.apt.edits={};schedule()}else drawPlan()}
 function typicalGroup(){
@@ -840,13 +844,14 @@ function bind(){
   $("#feLim").addEventListener("input",e=>{P.coreRules.feTravel=Math.max(6,parseFloat(e.target.value)||25);schedule()});
   $("#fireMode").addEventListener("change",e=>{P.coreRules.fire=e.target.value;P.cores=[];P.coreAuto=true;renderGrid();schedule()});
   $("#massMode").addEventListener("change",e=>{P.mass.mode=e.target.value;P.cores=[];P.coreAuto=true;P.apt.edits={};schedule()});
-  $("#massPlan").addEventListener("change",e=>{P.mass.plan=e.target.value;if(P.mass.plan!=="drawn"){corDrawing=false;corLine=[]}P.cores=[];P.coreAuto=true;P.apt.edits={};schedule()});
   // drawing: the grid stays where it is while you draw (it would otherwise re-centre on the new floor)
-  $("#corDraw").addEventListener("click",()=>{if(corDrawing){if(corLine.length>=2)corFinish();corDrawing=false}else{corDrawing=true;corLine=[];if(P.grid.centre!=="manual"){P.grid.centre="manual";renderGrid()}if(P.view!=="plan")$("#vPlan").click()}
-    $("#corDraw").textContent=corDrawing?"Finish drawing":"Draw corridor";drawPlan()});
-  $("#corUndo").addEventListener("click",()=>{if(corLine.length){corLine.pop();drawPlan();return}P.mass.corridors=(P.mass.corridors||[]).slice(0,-1);P.cores=[];P.coreAuto=true;schedule()});
-  $("#corClear").addEventListener("click",()=>{corLine=[];P.mass.corridors=[];P.cores=[];P.coreAuto=true;schedule()});
-  document.addEventListener("keydown",e=>{if(e.key==="Escape"&&corDrawing){corLine=[];corHover=null;corDrawing=false;$("#corDraw").textContent="Draw corridor";drawPlan()}});
+  const toggleDraw=()=>{if(corDrawing){if(corLine.length>=2)corFinish();corLine=[];corHover=null;corDrawing=false}else{corDrawing=true;corLine=[];
+    if(P.grid.centre!=="manual"){P.grid.centre="manual";renderGrid()}if(P.view!=="plan")$("#vPlan").click()}drawButtons();drawPlan()};
+  const undoDraw=()=>{if(corLine.length){corLine.pop();drawPlan();return}P.mass.corridors=(P.mass.corridors||[]).slice(0,-1);P.cores=[];P.coreAuto=true;P.apt.edits={};schedule()};
+  $("#corDraw").addEventListener("click",toggleDraw);$("#corDraw2").addEventListener("click",toggleDraw);
+  $("#corUndo").addEventListener("click",undoDraw);$("#corUndo2").addEventListener("click",undoDraw);
+  $("#corClear").addEventListener("click",()=>{corLine=[];P.mass.corridors=[];P.cores=[];P.coreAuto=true;P.apt.edits={};schedule()});
+  document.addEventListener("keydown",e=>{if(e.key==="Escape"&&corDrawing){corLine=[];corHover=null;corDrawing=false;drawButtons();drawPlan()}});
   $("#massTowers").addEventListener("change",e=>{P.mass.towers=e.target.value;P.cores=[];P.coreAuto=true;P.apt.edits={};schedule()});
   $("#massPodium").addEventListener("change",e=>{P.mass.podium=e.target.value;P.cores=[];P.coreAuto=true;P.apt.edits={};schedule()});
   $("#massGap").addEventListener("input",e=>{P.mass.gap=Math.max(3,parseFloat(e.target.value)||9);P.cores=[];P.coreAuto=true;P.apt.edits={};schedule()});
@@ -872,7 +877,7 @@ function bind(){
     const w=at(e),i=hit(w);if(i<0)return;
     const inst=P.cores[i];drag={i,dx:inst.x-w.x,dy:inst.y-w.y};P.coreSel=i;cv.setPointerCapture(e.pointerId);cv.classList.add("drag");renderCores();e.preventDefault()});
   cv.addEventListener("pointermove",e=>{if(P.view!=="plan"||!planT)return;const w=at(e);
-    if(corDrawing){corHover=corLine.length?corSnap(w):null;cv.classList.add("over");drawPlan();return}
+    if(corDrawing){corHover=corSnap(w);drawPlan();return}
     if(wallDrag){const L=typLayout();if(!L)return;const pr=AP.project(L.loops[wallDrag.ring],w);wallDrag.s=pr.s;wallDrag.moved=true;drawPlan();return}
     if(!drag){const r0=cv.getBoundingClientRect();cv.classList.toggle("over",hit(w)>=0||!!handleAt(e.clientX-r0.left,e.clientY-r0.top));return}
     const inst=P.cores[drag.i];inst.x=w.x+drag.dx;inst.y=w.y+drag.dy;snapInst(inst);P.coresBy="hand";drawPlan()});

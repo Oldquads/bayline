@@ -222,3 +222,5 @@ aside .panel .pbody{display:none;flex-direction:column;gap:10px;padding:2px 14px
 aside .panel.open .pbody{display:flex}
 aside .panel.open{border-color:var(--muted)}
 @media (prefers-reduced-motion:reduce){aside .panel>h2::before{transition:none}}
+
+#view.drawing{cursor:crosshair}
