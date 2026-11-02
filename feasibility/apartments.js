@@ -9,7 +9,7 @@
 const {area,bbox,centroid,diff,inter,union,shapeArea,offsetShape,D2R}=window.G;
 const STEP=0.4,EXT=1.5;
 
-function defaults(){return {depth:8,maxDepth:10,corridor:1.6,snap:"prefer",typical:null,edits:{},
+function defaults(){return {depth:8,maxDepth:9,corridor:1.6,snap:"prefer",typical:null,edits:{},
   types:[{name:"Studio",beds:0,bays:0.5,mix:0},{name:"1B",beds:1,bays:1,mix:40},{name:"2B",beds:2,bays:1.5,mix:45},{name:"3B",beds:3,bays:2,mix:15}]}}
 
 /* deepest inset that still leaves floor: half the plate's widest width */
@@ -179,7 +179,10 @@ function barOf(P,pc){
   // Corridor plan (Building form): auto takes the H when the floor is deeper than two apartments and a corridor;
   // "h" takes it on any floor deep enough for an outer tier (6 m) and an inner tier (4.5 m) beside one row;
   // "straight" never.
-  const plan=(P.mass&&P.mass.plan)||"auto",canH=Wm-cw-d0>=10.5-1e-6&&Wm<=HDEPTH(P)+0.05&&!secs.some(([l,h])=>h-l>Wm+7);
+  // an H wing is served by one core (between two cores the inner tier has no window): no longer than twice the
+  // door-to-stair travel limit
+  const hLen=2*(P.coreRules&&P.coreRules.fire!=="dts"?(+P.coreRules.feTravel||25):25)+4;
+  const plan=(P.mass&&P.mass.plan)||"auto",canH=Wm-cw-d0>=10.5-1e-6&&Wm<=HDEPTH(P)+0.05&&a1-a0<=hLen&&!secs.some(([l,h])=>h-l>Wm+7);
   if(plan==="straight"&&d>dMax+0.3)return null;
   if(plan!=="straight"&&(d>dMax+0.3||(plan==="h"&&canH))){
     // H plan (user's sketch). The row away from the sun stays one apartment deep (up to the maximum depth); the

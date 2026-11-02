@@ -9,7 +9,7 @@
 (function(){
 "use strict";
 const {area,bbox,diff,inter,shapeArea,offsetShape}=window.G;
-const CORE=45;   // m² of floor a core takes (lifts, stair, lobby), for scoring only
+const CORE=74;   // m² of floor a core takes (the default split core, 2 lifts + scissor stair + lobby), for scoring only
 
 function defaults(){return {mode:"auto",gap:9,towers:"auto",podium:"shared",plan:"auto"}}
 const PLANS={auto:"Auto",straight:"Straight",h:"H (deep floors)"};
@@ -45,9 +45,11 @@ function score(P,sh){
 function keep(P,sh){
   // a wing must reach nearly its full depth somewhere, so it has a corridor between two rows of apartments
   const {D}=depths(P),w=D/2-0.5;
-  // shave off slivers (under 2 m wide) left where a wing meets a setback line
-  const o=sh.length?inter(offsetShape(offsetShape(sh,-1),1),sh):sh;
-  return pieces(o).filter(pc=>shapeArea(pc)>=150&&offsetShape(pc,-w).length).flat()}
+  // shave off slivers left where a wing meets a setback line, and cut necks under 8 m wide that join two
+  // wings (they would make one odd building out of two)
+  const o=sh.length?inter(offsetShape(offsetShape(sh,-4),4),sh):sh;
+  // a tower needs room for a core and a few apartments
+  return pieces(o).filter(pc=>shapeArea(pc)>=350&&offsetShape(pc,-w).length).flat()}
 
 /* parallel bars running at angle t: bands D wide with the gap between, slid across to the best phase */
 function bandsAt(ref,t,phase,P,D){
@@ -116,10 +118,21 @@ function choose(P,ref){
   // Final choice by laying each option out: sellable area less half the common area (corridors, cores,
   // storage cost to build but don't sell), less a core per tower. The geometric score only finds the candidates.
   // only apartments that match a product type count as sellable (an oversize leftover isn't a sale)
-  if(window.APTS)for(const o of opts){const L=window.APTS.layoutPlate(P,o.shape,[],null),pl=shapeArea(o.shape),ns=L.units.filter(u=>u.ok).reduce((m,u)=>m+u.area,0);
+  // floor in an apartment beyond 9 m deep (Clause 58 D27, single aspect) counts at 40%: an over-deep wing
+  // only wins when the extra depth really adds apartments
+  const sp=((+P.grid.sx||8.4)+(+P.grid.sy||8.4))/2,bays=n=>{const t=P.apt.types.find(x=>x.name===n);return t&&window.APTS?window.APTS.baysOf(t):1};
+  const credit=u=>{const cap=Math.max(1,bays(u.type))*sp*9+(u.width&&u.width>0?0:0);return Math.min(u.area,cap)+0.4*Math.max(0,u.area-cap)};
+  // A tower that doesn't pay its way on its own (an odd leftover beside the main wings: typed sellable area less
+  // half its common area less its core under a quarter of its plate) is left out of the scheme.
+  const valueOf=sh=>{const L=window.APTS.layoutPlate(P,sh,[],null),pl=shapeArea(sh),ns=L.units.filter(u=>u.ok).reduce((m,u)=>m+credit(u),0);return {L,pl,ns,v:ns-0.8*(pl-ns)-CORE*outers(sh).length}};
+  if(window.APTS)for(const o of opts){if(o.n<2)continue;
+    // a piece that isn't a proper wing (laid out by the facade-strip method) must earn more to stay
+    const keepPc=pieces(o.shape).filter(pc=>{const r=valueOf(pc);return r.v>=(window.APTS.barOf(P,pc)?0.25:0.45)*r.pl});
+    if(keepPc.length&&keepPc.length<o.n){o.shape=keepPc.flat();o.n=keepPc.length}}
+  if(window.APTS)for(const o of opts){const L=window.APTS.layoutPlate(P,o.shape,[],null),pl=shapeArea(o.shape),ns=L.units.filter(u=>u.ok).reduce((m,u)=>m+credit(u),0);
     // floor that can't be planned as rows or an H falls back to the facade-strip method (wedge walls, corridor
     // rings): only used when nothing better fits, so it costs a tenth of its area
-    o.nsa=ns;o.plate=pl;o.value=ns-0.5*(pl-ns)-CORE*o.n-0.1*(L.stripArea||0)}
+    o.nsa=ns;o.plate=pl;o.value=ns-0.8*(pl-ns)-CORE*o.n-0.1*(L.stripArea||0)}
   const val=o=>o.value!=null?o.value:o.score;
   // forced mode: its best option if it has one; auto: the best value (fill wins ties)
   const base=opts.find(o=>o.kind==="fill")||opts[0];

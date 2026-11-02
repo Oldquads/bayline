@@ -194,11 +194,11 @@ function travel(P,R,cores,pts){
   const lim=travelLim(P),maxApart=+P.coreRules.exitsApart||45,fe=fireEng(P);
   // a door is served only by stairs in its own wing (separate buildings on the floor don't share exits)
   const rings={};for(const g of R.groups)if(g.floors&&g.fp.length)rings[g.name]=g.fp.filter(r=>area(r)>0);
-  let worst=0,at=null,far=0,choice=0;
+  let worst=0,at=null,far=0,choice=0,orphan=0;
   for(const p of pts){
     const wing=(rings[p.g]||[]).find(r=>pip(p,r));
     const mine=wing?st.filter(s=>pip(s.c,wing)):st;
-    if(!mine.length){const short=1e3;if(short>worst){worst=short;at=p}continue}
+    if(!mine.length){orphan++;const short=1e3;if(short>worst){worst=short;at=p}continue}
     const ds=mine.map(s=>({s,d:distToPoly(p,s.poly)})).sort((a,b)=>a.d-b.d);
     if(ds[0].d<=lim){far=Math.max(far,ds[0].d);continue}
     if(fe){const short=ds[0].d-lim;if(short>worst){worst=short;at=p}continue}
@@ -207,7 +207,7 @@ function travel(P,R,cores,pts){
     if(ok){choice++;continue}
     const short=ds[0].d-lim;if(short>worst){worst=short;at=p}
   }
-  return {worst,where:at?at.g:"",p:at,far,choice,doors:pts.length,lim,fe};
+  return {worst,where:at?at.g:"",p:at,far,choice,doors:pts.length,lim,fe,orphan};
 }
 
 /* Smallest core that meets the exit and lift needs, then more of the same until every apartment door
@@ -230,13 +230,21 @@ function suggest(P,R,maxCores=10){
   const cover=type=>{
     const first=place(P,R,{id:"c1",core:type.core,variant:type.variant,fx:false,fy:false});if(!first)return null;
     let cores=[first];
-    const worst=cs=>{const t=travel(P,R,cs,pts);return t?t.worst:0};
-    for(let k=1;k<maxCores&&worst(cores)>0.05;k++){
-      const t=travel(P,R,cores,pts),w0=t.worst;
+    // every tower (separate building on the typical floor) gets its own core first
+    const gs=R.groups.filter(g=>g.floors&&g.use==="apartments"&&g.fp.length);
+    if(gs.length){const t=gs.reduce((m,g)=>g.floors>m.floors||(g.floors===m.floors&&g.z0>m.z0)?g:m,gs[0]);
+      for(const r of t.fp.filter(r=>area(r)>0).sort((a,b)=>area(b)-area(a))){
+        if(cores.length>=maxCores)break;
+        if(cores.some(c=>pip({x:c.x,y:c.y},r)))continue;
+        const p=place(P,R,{...first,id:"c"+(cores.length+1)},cores,centroid(r));if(p&&pip({x:p.x,y:p.y},r))cores.push(p)}}
+    // then more cores while doors are too far: progress is doors with no stair in their tower first, then the furthest door
+    const score=cs=>{const t=travel(P,R,cs,pts);return t?t.orphan*1000+Math.min(t.worst,999):0};
+    for(let k=cores.length;k<maxCores&&score(cores)>0.05;k++){
+      const t=travel(P,R,cores,pts),s0=score(cores);
       const p=place(P,R,{...first,id:"c"+(k+1)},cores,t.p);if(!p)break;
       const next=recentre(P,R,[...cores,p],pts);
-      // keep a new core only if it brings the furthest door meaningfully closer
-      if(worst(next)>w0-0.5)break;
+      // keep a new core only if it serves a tower that had none, or brings the furthest door at least 0.5 m closer
+      if(score(next)>s0-0.5)break;
       cores=next;
     }
     return cores;

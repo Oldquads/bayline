@@ -31,7 +31,7 @@ function ensure(o){
   o.coreRules={aptsPerLift:60,aptDepth:8,travel:6,exitsApart:45,fire:"fe",feTravel:25,...(o.coreRules||{})};
   o.mass={...window.MASS.defaults(),...(o.mass||{})};
   o.coreView={cat:"all",suit:true,...(o.coreView||{})};
-  o.apt={...AP.defaults(),...(o.apt||{})};if(!o.apt._g2){o.apt.snap="prefer";o.apt._g2=1}delete o.apt.wall;if(!o.apt._m){o.apt.maxDepth=10;o.apt._m=1}for(const t of o.apt.types){if(t.beds==null)t.beds=PK.bedsOf(t);if(t.bays==null)t.bays=AP.baysOf(t)}if(o.coreRules.aptDepth&&!(o.apt&&o.apt._d)){o.apt.depth=o.coreRules.aptDepth;o.apt._d=1}
+  o.apt={...AP.defaults(),...(o.apt||{})};if(!o.apt._g2){o.apt.snap="prefer";o.apt._g2=1}delete o.apt.wall;if(!o.apt._m2){o.apt.maxDepth=9;o.apt._m=o.apt._m2=1}for(const t of o.apt.types){if(t.beds==null)t.beds=PK.bedsOf(t);if(t.bays==null)t.bays=AP.baysOf(t)}if(o.coreRules.aptDepth&&!(o.apt&&o.apt._d)){o.apt.depth=o.coreRules.aptDepth;o.apt._d=1}
   return o;
 }
 function gridOrigin(site){const a=site.pts[Math.min(site.front||0,site.pts.length-1)];return {ox:a.x,oy:a.y}}
