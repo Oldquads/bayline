@@ -64,9 +64,13 @@ function compute(P){
   const aptG=groups.filter(g=>g.floors&&g.use==="apartments"&&g.fp.length);
   if(window.MASS&&P.mass&&aptG.length){
     const ref=aptG.find(g=>P.apt&&g.id===P.apt.typical)||aptG.reduce((m,g)=>g.floors>m.floors||(g.floors===m.floors&&g.z0>m.z0)?g:m,aptG[0]);
+    // a corridor drawn by hand makes the floor (the envelope within one apartment depth of it)
+    if(window.APTS&&window.APTS.drawnOn(P)){for(const g of aptG){g.env=g.fp;g.fp=window.APTS.drawnFootprint(P,g.fp)}
+      mass={kind:"drawn",shape:ref.fp,n:ref.fp.filter(r=>area(r)>0).length,perCount:{}}}
+    else{
     mass=window.MASS.choose(P,ref.fp);
     // podium and ground apartment floors under several towers: one shared plate, or each tower's own
-    for(const g of aptG){g.env=g.fp;g.fp=(g.type==="podium"||g.type==="ground")&&g!==ref&&P.mass.podium!=="separate"?window.MASS.applyShared(P,mass,g.fp):window.MASS.apply(P,mass,g.fp,g!==ref)}
+    for(const g of aptG){g.env=g.fp;g.fp=(g.type==="podium"||g.type==="ground")&&g!==ref&&P.mass.podium!=="separate"?window.MASS.applyShared(P,mass,g.fp):window.MASS.apply(P,mass,g.fp,g!==ref)}}
   }
   for(const g of groups){
     g.fpArea=shapeArea(g.fp);g.gfa=g.fpArea*g.floors;g.nsa=g.gfa*eff(g);

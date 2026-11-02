@@ -11,8 +11,8 @@
 const {area,bbox,diff,inter,shapeArea,offsetShape}=window.G;
 const CORE=74;   // m² of floor a core takes (the default split core, 2 lifts + scissor stair + lobby), for scoring only
 
-function defaults(){return {mode:"auto",gap:9,towers:"auto",podium:"shared",plan:"auto"}}
-const PLANS={auto:"Auto",straight:"Straight",h:"H (deep floors)"};
+function defaults(){return {mode:"auto",gap:9,towers:"auto",podium:"shared",plan:"auto",corridors:[]}}
+const PLANS={auto:"Auto",straight:"Straight",h:"H (deep floors)",drawn:"Drawn on the plan"};
 const TOWERS={auto:"Auto",1:"1 tower",2:"2 towers",3:"3 towers",4:"4 towers"};
 const PODIUMS={shared:"Shared",separate:"Separate per tower"};
 const MODES={auto:"Best of the options",bars:"Double-loaded bars",court:"Courtyard (wings round the edge)",fill:"Fill the envelope"};
@@ -168,6 +168,7 @@ function hull(pts){const p=pts.slice().sort((a,b)=>a.x-b.x||a.y-b.y),cr=(o,a,b)=
 function describe(P,ch){
   const {d,cw,D}=depths(P);if(!ch)return "";
   const n=outers(ch.shape).length,f=v=>Math.round(v).toLocaleString();
+  if(ch.kind==="drawn")return `Corridor drawn on the plan: the floor is the envelope within one apartment depth of it${n>1?` (${n} buildings)`:""}. Each part of the floor belongs to the nearest corridor run.`;
   // how many towers, and the best of each count laid out
   const pc=ch.perCount||{},cs=Object.keys(pc).map(Number).sort((a,b)=>a-b);
   const why=cs.length>1||ch.want?` ${ch.want&&ch.want!==n?`${ch.want} tower${ch.want>1?"s":""} don't fit; nearest is ${n}. `:""}Best laid out by number of towers: ${cs.map(k=>`${k}: ${pc[k].nsa!=null?`${f(pc[k].nsa)} m² net of ${f(pc[k].plate)} m²`:"–"}`).join(" · ")}.`:"";

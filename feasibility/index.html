@@ -141,6 +141,12 @@
           <div class="fld" style="flex:2 1 200px"><label class="cap" for="massPlan">Corridor</label><select id="massPlan"></select></div>
           <div class="fld"><label class="cap" for="massGap">Space between towers m</label><input id="massGap" type="number" step="0.5" min="3"></div>
         </div>
+        <div class="row" id="drawRow">
+          <button class="btn go" id="corDraw" type="button">Draw corridor</button>
+          <button class="btn" id="corUndo" type="button">Undo last line</button>
+          <button class="btn" id="corClear" type="button">Clear</button>
+        </div>
+        <p class="hint" id="drawHint">On the plan, click points along the corridor's centre line (they snap to grid and mid-bay lines, square to the grid); double-click to finish a line. Draw more lines for an H, L, T or cross. Esc cancels.</p>
         <div class="fld"><label class="cap" for="massMode">Floor shape</label><select id="massMode"></select></div>
         <p class="hint" id="massMsg"></p>
         <p class="hint">Apartment floors are cut to wings: apartment + corridor + apartment. Deeper floors (about 20 m or more) can take the H corridor: the sun-side row splits into apartments on the facade and an inner tier with the core, a spur corridor each side of it and an apartment at each end. Auto picks by laying the options out.</p>

@@ -6,7 +6,7 @@
    one apartment depth of an outside corner, so corner units wrap the corner (dual aspect). */
 (function(){
 "use strict";
-const {area,bbox,centroid,diff,inter,union,shapeArea,offsetShape,D2R}=window.G;
+const {area,bbox,centroid,diff,inter,union,shapeArea,offsetShape,segBuffer,D2R}=window.G;
 const STEP=0.4,EXT=1.5;
 
 function defaults(){return {depth:8,maxDepth:9,corridor:1.6,snap:"prefer",typical:null,edits:{},
@@ -140,6 +140,7 @@ function cutStrip(R,strip,cuts,d,wall){
    apartments and a corridor) get double-loaded rows; any other piece gets the facade-strip method.
    edits: [{ring, s}] wall positions chosen by hand (facade-strip pieces only). */
 function layoutPlate(P,fp,cores,edits){
+  if(drawnOn(P))return drawnPlate(P,fp,cores);
   const pcs=piecesOf(fp),rows=[],rest=[];
   for(const pc of pcs){const b=barOf(P,pc);if(b)rows.push(b);else rest.push(...pc)}
   if(!rows.length){const S0=stripPlate(P,fp,cores,edits);S0.stripArea=S0.plate;return S0}
@@ -153,6 +154,63 @@ const piecesOf=sh=>{const hs=sh.filter(r=>area(r)<0);return sh.filter(r=>area(r)
 
 /* A piece is a wing when it has no holes, fills most of its box square to the grid, and is no wider
    than two apartments of the maximum depth plus the corridor. The long side is "along". */
+/* ---------- Corridors drawn by hand (Building form: Corridor "Drawn") ----------
+   The user draws the corridor's centre line (runs square to the grid). The floor is the envelope within one
+   apartment depth of the corridor's edge; each part of it belongs to the nearest run, and each run is cut
+   into apartments on grid and mid-bay lines like any wing. */
+function drawnOn(P){return P.mass&&P.mass.plan==="drawn"&&corridorRuns(P).length>0}
+function corridorRuns(P){
+  const F=window.GRID.frame(P),out=[];
+  for(const line of (P.mass&&P.mass.corridors)||[])for(let i=0;i+1<line.length;i++){
+    const A=F.toG(line[i]),B=F.toG(line[i+1]);if(Math.hypot(B.u-A.u,B.v-A.v)<0.5)continue;
+    const alongU=Math.abs(B.u-A.u)>=Math.abs(B.v-A.v),W2=(a,c)=>alongU?F.toW(a,c):F.toW(c,a);
+    const s0=alongU?Math.min(A.u,B.u):Math.min(A.v,B.v),s1=alongU?Math.max(A.u,B.u):Math.max(A.v,B.v),mid=alongU?(A.v+B.v)/2:(A.u+B.u)/2;
+    const rect=(x0,x1,y0,y1)=>{const r=[W2(x0,y0),W2(x1,y0),W2(x1,y1),W2(x0,y1)];return area(r)<0?r.reverse():r};
+    out.push({alongU,W2,rect,s0,s1,mid,a:W2(s0,mid),b:W2(s1,mid),toA:p=>{const g=F.toG(p);return alongU?g.u:g.v},toAC:p=>{const g=F.toG(p);return alongU?[g.u,g.v]:[g.v,g.u]},sp:alongU?+P.grid.sx:+P.grid.sy})}
+  return out;
+}
+/* the floor a drawn corridor makes: the envelope within one apartment depth of the corridor's edge */
+function drawnFootprint(P,fp){
+  const runs=corridorRuns(P);if(!runs.length||!fp.length)return fp;
+  const cw=+P.apt.corridor||1.6,R=cw/2+Math.max(+P.apt.depth||8,+P.apt.maxDepth||9);
+  const sh=inter(fp,union(runs.map(r=>r.rect(r.s0-R,r.s1+R,r.mid-R,r.mid+R))));
+  return piecesOf(sh).filter(pc=>shapeArea(pc)>=30).flat();
+}
+/* distance from a point to a run's centre line */
+function runDist(p,r){const dx=r.b.x-r.a.x,dy=r.b.y-r.a.y,l=dx*dx+dy*dy||1e-9,t=Math.max(0,Math.min(1,((p.x-r.a.x)*dx+(p.y-r.a.y)*dy)/l));return Math.hypot(p.x-r.a.x-t*dx,p.y-r.a.y-t*dy)}
+/* a bar (as rowPlate takes) in the grid frame along u or v, for a piece of floor */
+function frameBar(P,alongU){const F=window.GRID.frame(P),W2=(a,c)=>alongU?F.toW(a,c):F.toW(c,a);
+  return {alongU,W2,rect:(x0,x1,y0,y1)=>{const r=[W2(x0,y0),W2(x1,y0),W2(x1,y1),W2(x0,y1)];return area(r)<0?r.reverse():r},
+    toA:p=>{const g=F.toG(p);return alongU?g.u:g.v},toAC:p=>{const g=F.toG(p);return alongU?[g.u,g.v]:[g.v,g.u]},sp:alongU?+P.grid.sx:+P.grid.sy}}
+function drawnPlate(P,fp,cores){
+  const runs=corridorRuns(P),cw=+P.apt.corridor||1.6,h=cw/2,dMax=Math.max(+P.apt.depth||8,+P.apt.maxDepth||9),R=h+dMax;
+  const corAll=inter(fp,union(runs.map(r=>r.rect(r.s0-h,r.s1+h,r.mid-h,r.mid+h))));
+  const zone=corAll.length?diff(fp,corAll):fp;
+  // 1. each run, longest first, takes the band beside it, one apartment depth each side; a free end (not on another
+  //    run) carries on one apartment depth so the end apartments wrap it
+  for(const r of runs){const free=p=>!runs.some(o=>o!==r&&runDist(p,o)<cw);r.e0=free(r.a)?dMax:0;r.e1=free(r.b)?dMax:0}
+  const bars=[];let owned=[];
+  for(const r of runs.slice().sort((x,y)=>(y.s1-y.s0)-(x.s1-x.s0))){
+    let cell=inter(zone,[r.rect(r.s0-r.e0,r.s1+r.e1,r.mid-R,r.mid+R)]);if(owned.length)cell=diff(cell,owned);
+    if(shapeArea(cell)<5)continue;owned=union(owned.length?owned:[],cell);
+    const ac=cell.flat().map(r.toAC),as=ac.map(p=>p[0]),cs=ac.map(p=>p[1]);
+    bars.push({kind:"drawn",cell,pc:[cell.filter(x=>area(x)>0)[0]],cor:inter(fp,[r.rect(r.s0-h,r.s1+h,r.mid-h,r.mid+h)]),alongU:r.alongU,
+      a0:Math.min(...as),a1:Math.max(...as),c0:Math.min(...cs),c1:Math.max(...cs),mid:r.mid,d:dMax,cw,W2:r.W2,rect:r.rect,sp:r.sp,toA:r.toA,toAC:r.toAC,s0:r.s0,s1:r.s1})}
+  // 2. what's beyond every run's reach is a row along its own facade: walls square to that facade, doors at the
+  //    nearest point of the corridor (a dog-leg where needed)
+  const rest=owned.length?diff(zone,owned):zone,left0=[];
+  for(const pc of piecesOf(rest)){const a=shapeArea(pc);if(a<25){if(a>=1)left0.push({poly:pc[0],rings:pc,area:a});continue}
+    const F=window.GRID.frame(P),q=pc[0].map(p=>F.toG(p)),u0=Math.min(...q.map(p=>p.u)),u1=Math.max(...q.map(p=>p.u)),v0=Math.min(...q.map(p=>p.v)),v1=Math.max(...q.map(p=>p.v));
+    const alongU=u1-u0>=v1-v0,fb=frameBar(P,alongU),a0=alongU?u0:v0,a1=alongU?u1:v1,c0=alongU?v0:u0,c1=alongU?v1:u1;
+    // the side towards the corridor is the door side
+    const side=c=>{const m=fb.W2((a0+a1)/2,c);return Math.min(...runs.map(r=>runDist(m,r)))};
+    const mid=side(c0)<=side(c1)?c0:c1;
+    bars.push({kind:"facade",cell:pc,pc:[pc[0]],cor:[],a0,a1,c0,c1,mid,d:c1-c0,cw:0,...fb,doorTo:runs})}
+  const Rw=bars.length?rowPlate(P,bars,cores):{units:[],left:[],strip:[],corridor:[],d:dMax};
+  const plate=shapeArea(fp),units=Rw.units,left=[...Rw.left,...left0],nsa=units.reduce((m,u)=>m+u.area,0);
+  return {d:dMax,ban:+P.apt.depth||8,narrow:false,deep:false,drawn:true,inner:Rw.corridor,corridor:Rw.corridor,strip:Rw.strip,units,left,cuts:[],loops:[],rows:bars.length,hplan:0,stripArea:0,
+    plate,nsa,common:Math.max(0,plate-nsa-left.reduce((m,u)=>m+u.area,0)),eff:nsa/Math.max(1,plate)};
+}
 /* deepest wing the H plan takes: two apartments of the maximum depth, the corridor, and an inner tier */
 const HDEPTH=P=>2*Math.max(+P.apt.depth||8,+P.apt.maxDepth||12)+(+P.apt.corridor||1.6)+8;
 function barOf(P,pc){
@@ -200,6 +258,7 @@ function barOf(P,pc){
 /* Where cores go on a floor: they must touch the corridor ("touch"); in an H wing they also sit mostly in
    the corridor band plus the inner tier on the deep side ("within"), so the spurs can run either side. */
 function coreZones(P,fp){
+  if(drawnOn(P)){const h=(+P.apt.corridor||1.6)/2;return {touch:inter(fp,union(corridorRuns(P).map(r=>r.rect(r.s0-h,r.s1+h,r.mid-h,r.mid+h)))),within:[]}}
   const touch=[],within=[];
   for(const pc of piecesOf(fp)){const b=barOf(P,pc);
     if(!b){touch.push(...offsetShape(pc,-depthFor(P,pc).d));continue}
@@ -208,7 +267,10 @@ function coreZones(P,fp){
   return {touch,within};
 }
 /* Each wing's corridor centre line (for placing split cores on it): frame, along range, across position */
-function wingLines(P,fp){return piecesOf(fp).map(pc=>({pc,b:barOf(P,pc)})).map(({pc,b})=>b?{pc,W2:b.W2,a0:b.a0,a1:b.a1,mid:b.mid,alongU:b.alongU,sp:b.sp,kind:b.kind}:{pc,none:true})}
+function wingLines(P,fp){
+  // drawn corridor: a split core sits on a run of it
+  if(drawnOn(P)){const pcs=piecesOf(fp);return corridorRuns(P).map(r=>({pc:pcs.find(pc=>window.G.pip(r.W2((r.s0+r.s1)/2,r.mid),pc[0]))||pcs[0],W2:r.W2,a0:r.s0,a1:r.s1,mid:r.mid,alongU:r.alongU,sp:r.sp,kind:"drawn"})).filter(w=>w.pc)}
+  return piecesOf(fp).map(pc=>({pc,b:barOf(P,pc)})).map(({pc,b})=>b?{pc,W2:b.W2,a0:b.a0,a1:b.a1,mid:b.mid,alongU:b.alongU,sp:b.sp,kind:b.kind}:{pc,none:true})}
 /* A unit's type from its area (shared by both methods) */
 function typeOf(a,types){
   const live=types.filter(t=>t.mix>0),pool=live.length?live:types,near=(xs)=>xs.slice().sort((x,y)=>Math.abs(a-x.target)-Math.abs(a-y.target))[0];
@@ -237,7 +299,9 @@ function rowPlate(P,bars,cores){
   const rows=[],corridor=[],Hs=[],d0=+A.depth||8,HW=1.2;
   for(const b of bars){
     const mid=b.mid,h=b.cw/2,E=1,hb=b.sp/2;
-    let cor=inter([b.pc[0]],[b.rect(b.a0-E,b.a1+E,mid-h,mid+h)]);if(corCut.length)cor=diff(cor,corCut);corridor.push(...cor);
+    // a drawn corridor run brings its own piece of floor (cell) and corridor
+    const base=b.cell||[b.pc[0]];
+    let cor=b.cor||inter(base,[b.rect(b.a0-E,b.a1+E,mid-h,mid+h)]);if(corCut.length)cor=diff(cor,corCut);corridor.push(...cor);
     // H plan: on the deep side, an inner tier beside the corridor (core, a spur corridor each side of it,
     // an apartment at each end facing the end facade) and an outer tier of apartments on the facade
     let H=null;
@@ -276,7 +340,7 @@ function rowPlate(P,bars,cores){
     for(const [y0,y1,dy,side] of [[b.c0-E,mid-h,mid-h,-1],[mid+h,b.c1+E,mid+h,1]]){
       // in an H wing the deep side's row is the outer tier, from the tier boundary to the facade
       const outer=H&&side===H.sgn,ya=outer&&side>0?H.cB:y0,yb=outer&&side<0?H.cB:y1,door=outer?H.cB:dy;
-      const full=inter([b.pc[0]],[b.rect(b.a0-E,b.a1+E,ya,yb)]);let sh=full;if(coreShapes.length)sh=diff(sh,coreShapes);
+      const full=inter(base,[b.rect(b.a0-E,b.a1+E,ya,yb)]);let sh=full;if(coreShapes.length)sh=diff(sh,coreShapes);
       if(outer&&H.extra.length)sh=union(sh,H.extra);if(shapeArea(sh)<1)continue;
       // the outer tier's apartments may reach down over the core (see extra): cut slabs from the corridor edge
       const sy0=outer&&side>0?H.cK:ya,sy1=outer&&side<0?H.cK:yb;
@@ -358,7 +422,11 @@ function rowPlate(P,bars,cores){
       for(const pc of piecesOf(shp)){const a=shapeArea(pc);if(a<1)continue;
         if(!ty||a<12){left.push({poly:pc[0],rings:pc,area:a});continue}
         const xm=Math.max(x0,Math.min(x1,(x0+x1)/2));
-        units.push({poly:pc[0],rings:pc,area:a,type:ty==="?"?"Oversize":ty,ok:ty!=="?",door:door||r.b.W2(xm,r.door),width:x1-x0})}
+        // a unit past the end of a drawn corridor run has its door at the run's end
+        const xd=r.b.s0!=null?Math.max(r.b.s0,Math.min(r.b.s1,xm)):xm;
+        let dr=door||r.b.W2(xd,r.door);
+        if(r.b.doorTo){const c=centroid(pc[0]);let bd=1e9;for(const run of r.b.doorTo){const dx=run.b.x-run.a.x,dy=run.b.y-run.a.y,l=dx*dx+dy*dy||1e-9,t=Math.max(0,Math.min(1,((c.x-run.a.x)*dx+(c.y-run.a.y)*dy)/l)),q={x:run.a.x+t*dx,y:run.a.y+t*dy},dd=Math.hypot(q.x-c.x,q.y-c.y);if(dd<bd){bd=dd;dr=q}}}
+        units.push({poly:pc[0],rings:pc,area:a,type:ty==="?"?"Oversize":ty,ok:ty!=="?",door:dr,width:x1-x0})}
     }});
   // H inner-tier apartments (less any hallway an outer apartment takes past them) and the storage behind
   for(const H of Hs){
@@ -457,5 +525,5 @@ function splitAt(L,ring,s){
   let a=cs[cs.length-1]-P,b=cs[0];for(let i=0;i<cs.length;i++){if(cs[i]>s){b=cs[i];a=i?cs[i-1]:cs[cs.length-1]-P;break}if(i===cs.length-1){a=cs[i];b=cs[0]+P}}
   return clampCut(lp,(a+b)/2,L.ban||L.d);
 }
-window.APTS={wingLines,coreZones,barOf,HDEPTH,productTypes,baysOf,depthFor,clampCut,splitAt,defaults,layoutPlate,counts,mixText,project,pointAt,maxInset};
+window.APTS={drawnOn,corridorRuns,drawnFootprint,wingLines,coreZones,barOf,HDEPTH,productTypes,baysOf,depthFor,clampCut,splitAt,defaults,layoutPlate,counts,mixText,project,pointAt,maxInset};
 })();
