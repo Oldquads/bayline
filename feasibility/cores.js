@@ -106,12 +106,22 @@ function placeSplit(P,R,inst,others,target){
   const s=spec(inst),off=gapOffset(s),half=s.w/2000,plates=[coreZone(R)],ga=window.GRID.angle(P)/D2R;
   const avoid=(others||[]).map(geom).filter(Boolean);
   const outer=t.fp.filter(r=>area(r)>0).sort((a,b)=>area(b)-area(a))[0],c0=target||centroid(outer);
+  // A tower's first core: of the positions that keep every door in the tower within the travel limit, the one
+  // furthest from the street (the basement ramp and accessway come in from the street; a core in the middle of
+  // the basement blocks them). With no such position, the middle.
+  let far=null;
+  if(!target||P.__farCore){const s0=P.site,n=s0.pts.length,i=Math.min(s0.front||0,n-1),a=s0.pts[i],b=s0.pts[(i+1)%n],st={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+    const lim=travelLim(P)-2.5,doors=doorPoints(P,R);far={st,lim,doors}}
   let best=null;
   for(const w of wings){const hb=w.sp/2,rot=w.alongU?ga:ga+90,sg=w.alongU?1:-1;
     for(let k=Math.ceil((w.a0+half)/hb);k*hb<=w.a1-half+1e-6;k++)for(const fy of [false,true]){
       // the core's centre sits so the gap's middle is on the corridor's centre line
       const c=w.W2(k*hb,w.mid-sg*(fy?-off:off)),i={...inst,x:c.x,y:c.y,rot,fx:false,fy},g=geom(i);
-      const dd=Math.hypot(c.x-c0.x,c.y-c0.y);if(best&&dd>=best.d)continue;
+      let dd=Math.hypot(c.x-c0.x,c.y-c0.y);
+      // (straight-corridor wings only: an H needs its core in the middle, with a spur and an end apartment each side)
+      if(far&&w.kind!=="H"){const mine=far.doors.filter(p=>pip(p,w.pc[0]));if(mine.length&&mine.every(p=>Math.hypot(p.x-c.x,p.y-c.y)<=far.lim))dd=-Math.hypot(c.x-far.st.x,c.y-far.st.y)}
+      if(far&&w.kind!=="H"&&dd<0){const mid=w.W2((w.a0+w.a1)/2,w.mid),dm=-Math.hypot(mid.x-far.st.x,mid.y-far.st.y);if(dd>dm-3)dd=dm+0.01*Math.hypot(c.x-mid.x,c.y-mid.y)}
+      if(best&&dd>=best.d)continue;
       if(!fits(g,plates))continue;
       if(!avoid.every(o=>shapeArea(window.G.inter([g.outline],[o.outline]))<0.05)||!rampOK(P,[...avoid,g]))continue;
       best={inst:i,d:dd}}}

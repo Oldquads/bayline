@@ -145,21 +145,21 @@ function choose(P,ref){
   cache.set(key,res);return res;
 }
 /* the chosen massing applied to one apartment floorplate */
-function apply(P,ch,fp){
+function apply(P,ch,fp,exact){
   if(!fp.length||ch.kind==="fill")return fp;
-  const sh=keep(P,inter(fp,ch.kind==="bars"?bandShape(ch.B,fp.flat()):ch.shape));
+  // other floors take the typical floor's footprint exactly (a podium wing no longer than the tower above,
+  // so its doors stay within reach of the tower's cores); the typical floor itself takes the bands
+  const sh=keep(P,inter(fp,ch.kind==="bars"&&!exact?bandShape(ch.B,fp.flat()):ch.shape));
   // a floor too small for a wing keeps its envelope plate
   return sh.length?sh:fp;
 }
 /* A shared podium: one plate spanning the towers and the gaps between them (cut to the podium's own
    envelope). With bars, the band from the first tower to the last; otherwise the towers' convex hull. */
 function applyShared(P,ch,fp){
-  if(!fp.length||!ch||ch.kind==="fill"||outers(ch.shape).length<2)return apply(P,ch,fp);
-  let span;
-  if(ch.kind==="bars"){const c=Math.cos(ch.B.t),s=Math.sin(ch.B.t),vs=ch.shape.flat().map(p=>-p.x*s+p.y*c);
-    span=bandShape({...ch.B,bands:[[Math.min(...vs),Math.max(...vs)]]},fp.flat())}
-  else span=[hull(ch.shape.flat())];
-  const sh=keep(P,inter(fp,span));return sh.length?sh:apply(P,ch,fp);
+  if(!fp.length||!ch||ch.kind==="fill"||outers(ch.shape).length<2)return apply(P,ch,fp,true);
+  // the outline wrapping all the towers (with bars, the towers and the gaps between them, no further along)
+  const span=[hull(ch.shape.flat())];
+  const sh=keep(P,inter(fp,span));return sh.length?sh:apply(P,ch,fp,true);
 }
 function hull(pts){const p=pts.slice().sort((a,b)=>a.x-b.x||a.y-b.y),cr=(o,a,b)=>(a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x),lo=[],up=[];
   for(const q of p){while(lo.length>1&&cr(lo[lo.length-2],lo[lo.length-1],q)<=0)lo.pop();lo.push(q)}

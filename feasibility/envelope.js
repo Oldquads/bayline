@@ -66,7 +66,7 @@ function compute(P){
     const ref=aptG.find(g=>P.apt&&g.id===P.apt.typical)||aptG.reduce((m,g)=>g.floors>m.floors||(g.floors===m.floors&&g.z0>m.z0)?g:m,aptG[0]);
     mass=window.MASS.choose(P,ref.fp);
     // podium and ground apartment floors under several towers: one shared plate, or each tower's own
-    for(const g of aptG){g.env=g.fp;g.fp=(g.type==="podium"||g.type==="ground")&&g!==ref&&P.mass.podium!=="separate"?window.MASS.applyShared(P,mass,g.fp):window.MASS.apply(P,mass,g.fp)}
+    for(const g of aptG){g.env=g.fp;g.fp=(g.type==="podium"||g.type==="ground")&&g!==ref&&P.mass.podium!=="separate"?window.MASS.applyShared(P,mass,g.fp):window.MASS.apply(P,mass,g.fp,g!==ref)}
   }
   for(const g of groups){
     g.fpArea=shapeArea(g.fp);g.gfa=g.fpArea*g.floors;g.nsa=g.gfa*eff(g);
